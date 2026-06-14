@@ -1,26 +1,23 @@
 /**
  * @file ble_demo_arduino.cpp
- * @brief Arduino BLE implementation matching the original ble_demo.h interface.
- *        The original used raw NimBLE C API from ESP-IDF; this version uses
- *        the standard Arduino ESP32 BLE library (Bluedroid).
+ * @brief NimBLE implementation matching the original ble_demo.h interface.
+ *        Uses h2zero/NimBLE-Arduino (selected via -DUSE_NIMBLE) for reliable
+ *        BLE HID operation on ESP32-S3 with Windows/macOS hosts.
  *
  *        Implements a simple BLE Heart Rate Monitor server.
  */
 #include "ble_demo.h"
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <NimBLEDevice.h>
 #include <esp_mac.h>
 #include <cstdio>
 
 /* Heart Rate Service / Characteristic UUIDs (standard Bluetooth SIG) */
-#define HRS_UUID        "0000180D-0000-1000-8000-00805F9B34FB"
-#define HRM_CHAR_UUID   "00002A37-0000-1000-8000-00805F9B34FB"
+#define HRS_UUID        "180D"
+#define HRM_CHAR_UUID   "2A37"
 
 /* ---- State ---- */
-static BLEServer*         pServer         = nullptr;
-static BLECharacteristic* pCharacteristic = nullptr;
+static NimBLEServer*         pServer         = nullptr;
+static NimBLECharacteristic* pCharacteristic = nullptr;
 
 static uint8_t  _is_connected  = 0;
 static uint8_t  _is_subscribed = 0;
@@ -31,19 +28,20 @@ static char _device_name[32];
 static BLEDemoInfo_t _info;
 
 /* ---- Callbacks ---- */
-class _ServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer*)    override { _is_connected = 1; }
-    void onDisconnect(BLEServer*) override {
+class _ServerCallbacks : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer*) override {
+        _is_connected = 1;
+    }
+    void onDisconnect(NimBLEServer* pSrv) override {
         _is_connected  = 0;
         _is_subscribed = 0;
-        BLEDevice::startAdvertising();
+        /* NimBLE-Arduino auto-restarts advertising when advertiseOnDisconnect(true) */
     }
 };
 
-class _DescriptorCallbacks : public BLEDescriptorCallbacks {
-    void onWrite(BLEDescriptor* pDesc) override {
-        const uint8_t* val = pDesc->getValue();
-        _is_subscribed = (val && val[0] == 1) ? 1 : 0;
+class _CharCallbacks : public NimBLECharacteristicCallbacks {
+    void onSubscribe(NimBLECharacteristic*, ble_gap_conn_desc*, uint16_t subValue) override {
+        _is_subscribed = (subValue > 0) ? 1 : 0;
     }
 };
 
@@ -57,38 +55,41 @@ void ble_demo_start()
     esp_read_mac(mac, ESP_MAC_BT);
     snprintf(_device_name, sizeof(_device_name), "M5Dial-%02X%02X", mac[4], mac[5]);
 
-    _info.device_name = _device_name;
+    _info.device_name   = _device_name;
     _info.is_connected  = &_is_connected;
     _info.is_subscribed = &_is_subscribed;
     _info.sending_data  = &_sending_data;
 
-    BLEDevice::init(_device_name);
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new _ServerCallbacks());
+    NimBLEDevice::init(_device_name);
+    NimBLEDevice::setSecurityAuth(true, true, true);
 
-    BLEService* pService = pServer->createService(HRS_UUID);
+    pServer = NimBLEDevice::createServer();
+    pServer->setCallbacks(new _ServerCallbacks());
+    pServer->advertiseOnDisconnect(true);
+
+    NimBLEService* pService = pServer->createService(HRS_UUID);
 
     pCharacteristic = pService->createCharacteristic(
         HRM_CHAR_UUID,
-        BLECharacteristic::PROPERTY_NOTIFY
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-
-    BLEDescriptor* pDesc = new BLEDescriptor(BLEUUID((uint16_t)0x2902));
-    pDesc->setCallbacks(new _DescriptorCallbacks());
-    pCharacteristic->addDescriptor(pDesc);
+    /* NimBLE-Arduino automatically adds the CCCD descriptor for NOTIFY */
+    pCharacteristic->setCallbacks(new _CharCallbacks());
 
     pService->start();
 
-    BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
     pAdv->addServiceUUID(HRS_UUID);
     pAdv->setScanResponse(false);
     pAdv->setMinPreferred(0x06);
-    BLEDevice::startAdvertising();
+    NimBLEDevice::startAdvertising();
 }
 
 void ble_demo_stop()
 {
-    BLEDevice::deinit(false);
+    NimBLEDevice::stopAdvertising();
+    /* Deinit so the next app (e.g. BLE Volume) can initialise its own stack */
+    NimBLEDevice::deinit(false);
     pServer         = nullptr;
     pCharacteristic = nullptr;
     _is_connected   = 0;

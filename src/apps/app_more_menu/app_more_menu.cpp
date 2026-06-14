@@ -21,6 +21,18 @@ void MoreMenu::_create_menu()
     _data.menu = new SMOOTH_MENU::Simple_Menu;
     _data.menu_render_cb = new MoreMenuRender_CB_t;
     _data.menu_render_cb->setCanvas(_data.hal->canvas);
+    _data.menu_render_cb->setIconCanvas(&_app_icon);
+    /* Icons aligned with tag_list order below (nullptr = no icon) */
+    _data.menu_render_cb->setIcons({
+        nullptr,                  // Quit
+        image_data_icon_lcd,      // LCD Test
+        image_data_icon_rtc,      // RTC Clock
+        image_data_icon_rfid,     // RFID Scan
+        image_data_icon_wifi,     // WiFi Scan
+        image_data_icon_ble,      // BLE Server
+        image_data_icon_temp,     // Temp Demo
+        nullptr                   // Power Off
+    });
 
     _data.menu->init(240, 240);
     _data.menu->setRenderCallback(_data.menu_render_cb);
@@ -43,21 +55,13 @@ void MoreMenu::_create_menu()
     int text_size = 1;
     std::vector<std::string> tag_list = {
         "Quit",
-        "Power Off",
-        "LVGL Widgets",
-        "LVGL Benchmark",
-        "LVGL Stress",
-        "???",
-        ":):):):)",
-        "This",
-        "Is",
-        "A",
-        "Really",
-        "Really",
-        "Really",
-        "Really",
-        "Long",
-        "List"
+        "LCD Test",
+        "RTC Clock",
+        "RFID Scan",
+        "WiFi Scan",
+        "BLE Server",
+        "Temp Demo",
+        "Power Off"
     };
 
 
@@ -66,7 +70,7 @@ void MoreMenu::_create_menu()
     {
         _data.menu->getMenu()->addItem(
             tag_list[i].c_str(),
-            24,
+            56,
             10 + (text_height + 2) * text_size * i,
             text_width * text_size * tag_list[i].size(),
             text_height * text_size
@@ -133,6 +137,10 @@ void MoreMenu::onSetup()
 void MoreMenu::onCreate()
 {
     _log("onCreate");
+
+    /* Shared 42x42 sprite used as the top icon for launched sub-apps */
+    _app_icon.createSprite(42, 42);
+
     _create_menu();
 }
 
@@ -156,4 +164,5 @@ void MoreMenu::onDestroy()
 
     delete _data.menu;
     delete _data.menu_render_cb;
+    _app_icon.deleteSprite();
 }

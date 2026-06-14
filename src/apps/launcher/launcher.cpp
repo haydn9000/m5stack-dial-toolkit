@@ -38,17 +38,20 @@ void Launcher::_menu_init()
     _data.menu->getMenu()->x = 0;
     _data.menu->getMenu()->y = 0;
 
-    /* Push selector points into menu */
+    /* Push selector points into menu — clustered in a tight arc at the top */
     int a = 120;
     int b = 120;
     int r = 60;
-    int n = 10;
+    int n = ICON_NUM;
+    const float arc_step   = 36.0f * 3.14159f / 180.0f; /* angle between icons */
+    const float arc_center = -3.14159f / 2.0f;          /* top of the screen   */
     int x;
     int y;
     for (int i = 0; i < n; i++)
     {
-        x = a + r * std::cos(2 * 3.14 * i / n);
-        y = b + r * std::sin(2 * 3.14 * i / n);
+        float ang = arc_center + (i - (n - 1) / 2.0f) * arc_step;
+        x = a + r * std::cos(ang);
+        y = b + r * std::sin(ang);
         _data.menu->getMenu()->addItem("", x, y, ICON_RADIUS, ICON_RADIUS);
     }
 }
@@ -70,17 +73,20 @@ void Launcher::_icon_list_init()
         icon_sprite_list[i].pushImage(0, 0, 42, 42, icon_pic_list[i]);
     }
 
-    /* Icon position */
+    /* Icon position — clustered in a tight arc at the top */
     int a = 120;
     int b = 120;
     int r = 190 / 2;
-    int n = 10;
+    int n = ICON_NUM;
+    const float arc_step   = 36.0f * 3.14159f / 180.0f;
+    const float arc_center = -3.14159f / 2.0f;
     int x;
     int y;
     for (int i = 0; i < icon_list.size(); i++)
     {
-        x = a + r * std::cos(2 * 3.14 * i / n);
-        y = b + r * std::sin(2 * 3.14 * i / n);
+        float ang = arc_center + (i - (n - 1) / 2.0f) * arc_step;
+        x = a + r * std::cos(ang);
+        y = b + r * std::sin(ang);
 
         icon_list[i].x = x;
         icon_list[i].y = y;
@@ -187,7 +193,7 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
 
     /* Special color for app more menu */
     uint32_t theme_color = 0;
-    if (selectedNum != 7)
+    if (selectedNum != 2)
         theme_color = icon_list[selectedNum].color;
     else
         theme_color = 0;
@@ -273,27 +279,12 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
     switch (selectedNum)
     {
         case 0:
-            app_ptr = new MOONCAKE::USER_APP::LCD_Test;
+            app_ptr = new MOONCAKE::USER_APP::BLE_Volume;
             break;
         case 1:
-            app_ptr = new MOONCAKE::USER_APP::RTC_Test;
-            break;
-        case 2:
-            app_ptr = new MOONCAKE::USER_APP::RFID_Test;
-            break;
-        case 3:
             app_ptr = new MOONCAKE::USER_APP::Set_Brightness;
             break;
-        case 4:
-            app_ptr = new MOONCAKE::USER_APP::WiFi_Scan;
-            break;
-        case 5:
-            app_ptr = new MOONCAKE::USER_APP::BLE_Server;
-            break;
-        case 6:
-            app_ptr = new MOONCAKE::USER_APP::VideoShit;
-            break;
-        case 7:
+        case 2:
             app_ptr = new MOONCAKE::USER_APP::MoreMenu;
             break;
         default:

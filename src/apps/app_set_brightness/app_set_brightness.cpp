@@ -10,6 +10,7 @@
  */
 #include "app_set_brightness.h"
 #include "../common_define.h"
+#include <Preferences.h>
 
 
 using namespace MOONCAKE::USER_APP;
@@ -121,4 +122,11 @@ void Set_Brightness::onRunning()
 void Set_Brightness::onDestroy()
 {
     _log("onDestroy");
+
+    /* Persist brightness across power cycles (NVS) */
+    Preferences prefs;
+    prefs.begin("settings", false);
+    prefs.putInt("bright", _data.brightness);
+    prefs.end();
+    _log("saved brightness: %d", _data.brightness);
 }

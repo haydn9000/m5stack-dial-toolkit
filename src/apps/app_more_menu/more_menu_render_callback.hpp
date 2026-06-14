@@ -9,6 +9,8 @@
  * 
  */
 #pragma once
+#include <vector>
+#include <cstdint>
 
 
 /* Render setting */
@@ -20,6 +22,8 @@ struct MoreMenuRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
 {
     private:
         LGFX_Sprite* _canvas;
+        LGFX_Sprite* _icon_canvas = nullptr;
+        std::vector<const uint16_t*> _icons;
 
         float approxSin(float x)
         {
@@ -34,6 +38,8 @@ struct MoreMenuRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
 
     public:
         inline void setCanvas(LGFX_Sprite* canvasPtr) { _canvas = canvasPtr; }
+        inline void setIconCanvas(LGFX_Sprite* iconCanvas) { _icon_canvas = iconCanvas; }
+        inline void setIcons(const std::vector<const uint16_t*>& icons) { _icons = icons; }
 
         /* Override render callback */
         void renderCallback(
@@ -99,6 +105,15 @@ struct MoreMenuRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
                     // menuItemList[i]->x,
                     menuItemList[i]->y - selector.y + menu_start_y_offset
                 );
+
+                /* Draw the app icon to the left of the name (apps only) */
+                if (_icon_canvas != nullptr && i < (int)_icons.size() && _icons[i] != nullptr)
+                {
+                    _icon_canvas->pushImage(0, 0, 42, 42, _icons[i]);
+                    int icon_x = menuItemList[i]->x + menu_rounded_x_offset - 22;
+                    int icon_y = menuItemList[i]->y - selector.y + menu_start_y_offset + 12;
+                    _icon_canvas->pushRotateZoom(_canvas, icon_x, icon_y, 0, 0.5, 0.5, TFT_BLACK);
+                }
             }
 
 

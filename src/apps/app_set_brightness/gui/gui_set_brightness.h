@@ -16,6 +16,11 @@
 class GUI_SetBrightness : public GUI_Base
 {
     private:
+        void _draw_background(uint8_t brightness);
+        void _draw_scanlines();
+        void _draw_hud_frame(uint8_t brightness);
+        void _draw_gauge(uint8_t brightness);
+        void _draw_center_number(uint8_t brightness);
 
     public:
         void init() override;

@@ -14,6 +14,14 @@
 #include "../utilities/smooth_menu/src/simple_menu/simple_menu.h"
 #include "more_menu_render_callback.hpp"
 
+#include "../app_lcd_test/app_lcd_test.h"
+#include "../app_rtc_test/app_rtc_test.h"
+#include "../app_rfid_test/app_rfid_test.h"
+#include "../app_wifi_scan/app_wifi_scan.h"
+#include "../app_ble_server/app_ble_server.h"
+#include "../app_temp_demo/app_temp_demo.h"
+#include "../launcher/launcher_icons/launcher_icons.h"
+
 
 namespace MOONCAKE
 {
@@ -33,8 +41,12 @@ namespace MOONCAKE
         {
             private:
                 const char* _tag = "MoreMenu";
+                LGFX_Sprite _app_icon;
                 void _create_menu();
                 void _menu_loop();
+
+                /* Launch a sub-app and run its lifecycle until it quits */
+                void _run_app(MOONCAKE::APP_BASE* app, uint32_t themeColor, const uint16_t* iconPic);
 
 
                 /* Selected callback */

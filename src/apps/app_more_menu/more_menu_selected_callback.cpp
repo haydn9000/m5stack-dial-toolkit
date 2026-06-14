@@ -27,6 +27,39 @@ using namespace MOONCAKE::USER_APP;
 
 
 
+void MoreMenu::_run_app(MOONCAKE::APP_BASE* app, uint32_t themeColor, const uint16_t* iconPic)
+{
+    if (app == nullptr)
+        return;
+
+    /* Init gui module if the app has one */
+    if (app->getGui() != nullptr)
+    {
+        if (iconPic != nullptr)
+            _app_icon.pushImage(0, 0, 42, 42, iconPic);
+        app->getGui()->setThemeColor(themeColor);
+        app->getGui()->init(_data.hal->canvas, &_app_icon);
+    }
+
+    /* Run lifecycle until the app asks to quit */
+    app->setUserData((void*)_data.hal);
+    app->onSetup();
+    app->onCreate();
+    while (1)
+    {
+        app->onRunning();
+        if (app->isGoingDestroy())
+        {
+            app->resetGoingDestroyFlag();
+            app->onDestroy();
+            break;
+        }
+    }
+
+    delete app;
+}
+
+
 void MoreMenu::_item_selected_callback(uint8_t selectedNum)
 {
     // _log("%d", selectedNum);
@@ -39,6 +72,39 @@ void MoreMenu::_item_selected_callback(uint8_t selectedNum)
     if (selected_item_tag == "Quit")
     {
         destroyApp();
+        return;
+    }
+
+
+    /* Sub-apps moved here from the main launcher */
+    if (selected_item_tag == "LCD Test")
+    {
+        _run_app(new MOONCAKE::USER_APP::LCD_Test, 0xFD5C4C, image_data_icon_lcd);
+        return;
+    }
+    if (selected_item_tag == "RTC Clock")
+    {
+        _run_app(new MOONCAKE::USER_APP::RTC_Test, 0x577EFF, image_data_icon_rtc);
+        return;
+    }
+    if (selected_item_tag == "RFID Scan")
+    {
+        _run_app(new MOONCAKE::USER_APP::RFID_Test, 0x03A964, image_data_icon_rfid);
+        return;
+    }
+    if (selected_item_tag == "WiFi Scan")
+    {
+        _run_app(new MOONCAKE::USER_APP::WiFi_Scan, 0xEB8429, image_data_icon_wifi);
+        return;
+    }
+    if (selected_item_tag == "BLE Server")
+    {
+        _run_app(new MOONCAKE::USER_APP::BLE_Server, 0x04A279, image_data_icon_ble);
+        return;
+    }
+    if (selected_item_tag == "Temp Demo")
+    {
+        _run_app(new MOONCAKE::USER_APP::VideoShit, 0x008CD6, image_data_icon_temp);
         return;
     }
 
