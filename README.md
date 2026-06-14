@@ -56,8 +56,6 @@ src/
 └── apps/               # MOONCAKE app framework — launcher + individual apps
 ```
 
-See [CLAUDE.md](CLAUDE.md) for detailed architecture notes, conventions, and porting details.
-
 ## Credits
 
 Based on M5Stack's [M5Dial-UserDemo](https://github.com/m5stack/M5Dial-UserDemo) and the [MOONCAKE](https://github.com/Forairaaaaa/mooncake) app framework by Forairaaaaa.
