@@ -11,6 +11,7 @@ The M5Dial is an ESP32-S3 rotary-encoder device with a 240×240 round display, t
 ## Features
 
 - **BLE Volume Controller** — acts as a Bluetooth HID device so the dial controls your computer's master volume. Rotate to adjust, press to mute. Mute-aware: while muted you can keep lowering the level (and drive the host all the way to 0) or rotate up to unmute.
+- **Stopwatch / Timer / Pomodoro** — three time apps. The stopwatch times with centisecond precision, the countdown timer ends with a loud resonant alarm, and the pomodoro tracks focus/break cycles with session dots.
 - **Brightness Control** — adjust and persist screen brightness (saved to NVS, restored on boot).
 - **More menu** — extra apps: LCD test, RTC clock, RFID scanner, WiFi scanner, BLE heart-rate server, temperature demo, and power off.
 - **Cyberpunk HUD UI** — neon gauges, CRT scanlines, 7-segment readouts, and a synthwave boot splash.

@@ -26,7 +26,7 @@
 #define ICON_TAG_UP_OFFSET          -24
 #define ICON_TAG_DOWN_OFFSET        0
 
-#define ICON_NUM                    3
+#define ICON_NUM                    6
 
 
 /* Strucut to hold icon value */
@@ -45,25 +45,32 @@ static std::array<Icon_t, ICON_NUM> icon_list;
 /* Icon color */
 static std::array<uint32_t, ICON_NUM> icon_color_list = {
     0x32BEA6,  // BLE Volume - teal (matches icon PNG background)
+    0xFFB300,  // Timer - amber
+    0x00E5FF,  // Stopwatch - cyan
+    0xFF2E88,  // Pomodoro - magenta
     0x1AA198,  // Brightness
     0x5D7BA2   // More
 };
 /* Icon tag */
 static std::array<std::string, ICON_NUM * 2> icon_tag_list = {
     "VOL", "CTRL",
+    "TIMER", "",
+    "STOPWATCH", "",
+    "POMODORO", "",
     "BRIGHTNESS", "SET",
     "MORE", ""
 };
 /* Icon pic */
 static std::array<const uint16_t*, ICON_NUM> icon_pic_list = {
     image_data_icon_volume,
+    image_data_icon_timer,
+    image_data_icon_stopwatch,
+    image_data_icon_pomodoro,
     image_data_icon_brigntness,
     image_data_icon_more
 };
 /* Sprite to render icon with transparency */
 static LGFX_Sprite icon_sprite_list[ICON_NUM];
-
-
 
 
 struct LauncherRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t

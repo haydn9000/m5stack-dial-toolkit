@@ -72,6 +72,9 @@ struct MoreMenuRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
 
             /* Draw menu */
             _canvas->setFont(GUI_FONT_CN_BIG);
+            /* Pin datum to top-left so labels stay right of their icons
+             * (a prior app may have left the shared canvas datum centered). */
+            _canvas->setTextDatum(textdatum_t::top_left);
             uint8_t text_tag_color;
             
             for (int i = 0; i < menuItemList.size(); i++)
