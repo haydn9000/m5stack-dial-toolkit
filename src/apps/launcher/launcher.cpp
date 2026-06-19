@@ -193,7 +193,7 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
 
     /* Special color for app more menu */
     uint32_t theme_color = 0;
-    if (selectedNum != 2)
+    if (selectedNum != 5)
         theme_color = icon_list[selectedNum].color;
     else
         theme_color = 0;
@@ -282,9 +282,18 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
             app_ptr = new MOONCAKE::USER_APP::BLE_Volume;
             break;
         case 1:
-            app_ptr = new MOONCAKE::USER_APP::Set_Brightness;
+            app_ptr = new MOONCAKE::USER_APP::Timer;
             break;
         case 2:
+            app_ptr = new MOONCAKE::USER_APP::Stopwatch;
+            break;
+        case 3:
+            app_ptr = new MOONCAKE::USER_APP::Pomodoro;
+            break;
+        case 4:
+            app_ptr = new MOONCAKE::USER_APP::Set_Brightness;
+            break;
+        case 5:
             app_ptr = new MOONCAKE::USER_APP::MoreMenu;
             break;
         default:

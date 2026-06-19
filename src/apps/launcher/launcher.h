@@ -24,6 +24,9 @@
 #include "../app_more_menu/app_more_menu.h"
 #include "../app_ble_server/app_ble_server.h"
 #include "../app_ble_volume/app_ble_volume.h"
+#include "../app_pomodoro/app_pomodoro.h"
+#include "../app_timer/app_timer.h"
+#include "../app_stopwatch/app_stopwatch.h"
 
 
 

@@ -62,11 +62,15 @@ src/
     ├── app_wifi_scan/              # WiFi network scanner app
     ├── app_ble_server/             # BLE heart rate server app
     ├── app_ble_volume/             # BLE HID volume controller app (encoder=vol, button=mute; while muted, down lowers level/drives host to 0, up unmutes; first power-on starts at 0/muted)
+    ├── app_stopwatch/              # Cyberpunk stopwatch (press=start/pause, turn=reset, hold=exit)
+    ├── app_timer/                  # Cyberpunk countdown timer with loud resonant end alarm
+    ├── app_pomodoro/               # Cyberpunk pomodoro (focus/break cycles, 4 session dots)
     ├── app_temp_demo/              # Temperature/animation demo app
     ├── app_more_menu/              # Scrollable "more" menu (power off, etc.)
     ├── app_template/               # Blank template for new apps
     └── utilities/
         ├── smooth_menu/            # Animated menu library (Simple_Menu)
+        ├── cyber_ui/               # Shared cyberpunk HUD draw helpers for the time apps
         ├── gui_base/               # GUI_Base class with common drawing helpers
         ├── ble_demo/               # BLE demo interface + Arduino BLE implementation
         └── wifi_common_test/       # WiFi scan utility (esp_wifi API)
@@ -142,7 +146,7 @@ The original project used ESP-IDF 5.1.3. Key differences in this port:
 
 ## Launcher Layout
 
-The **main launcher** shows 3 icons clustered in a tight arc at the top (not spread around the full ring): **VOL** (BLE Volume, index 0), **BRIGHTNESS** (Set Brightness, index 1), and **MORE** (index 2). `ICON_NUM` in `launcher_render_callback.hpp` controls the icon/menu count; the arc spacing/center are set by `arc_step`/`arc_center` in `launcher.cpp` (`_menu_init` and `_icon_list_init`). The switch in `launcher.cpp::_app_open_callback()` must match the icon order.
+The **main launcher** shows 6 icons clustered in a tight arc at the top (not spread around the full ring): **VOL** (BLE Volume, index 0), **TIMER** (index 1), **STOPWATCH** (index 2), **POMODORO** (index 3), **BRIGHTNESS** (Set Brightness, index 4), and **MORE** (index 5). `ICON_NUM` in `launcher_render_callback.hpp` controls the icon/menu count; the arc spacing/center are set by `arc_step`/`arc_center` in `launcher.cpp` (`_menu_init` and `_icon_list_init`). The switch in `launcher.cpp::_app_open_callback()` must match the icon order.
 
 All other apps live in the **More menu** (`app_more_menu/`), shown as a vertical list with each app's icon drawn to the left of its name. To move/add an app there:
 - Add the app's `#include` to `app_more_menu.h`.

@@ -18,3 +18,6 @@
 #include "icon_temp.h"
 #include "icon_wifi.h"
 #include "icon_volume.h"
+#include "icon_stopwatch.h"
+#include "icon_timer.h"
+#include "icon_pomodoro.h"
