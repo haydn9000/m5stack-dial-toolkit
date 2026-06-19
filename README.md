@@ -17,9 +17,23 @@ The M5Dial is an ESP32-S3 rotary-encoder device with a 240×240 round display, t
 
 ## Screenshots
 
-| Volume Controller | Brightness | More Menu |
+| Home Menu | Volume Controller | Brightness |
 |:---:|:---:|:---:|
-| <img src="img/gui-ble-volume.jpg" alt="BLE volume controller HUD" width="240"> | <img src="img/gui-brightness.jpg" alt="Brightness HUD" width="240"> | <img src="img/more-menu.jpg" alt="More menu with app icons" width="240"> |
+| <img src="img/home-menu.jpg" alt="Home menu" width="240"> | <img src="img/gui-ble-volume.jpg" alt="BLE volume controller HUD" width="240"> | <img src="img/gui-brightness.jpg" alt="Brightness HUD" width="240"> |
+
+| More Menu | Timer Screen | |
+|:---:|:---:|:---:|
+| <img src="img/more-menu.jpg" alt="More menu with app icons" width="240"> | <img src="img/timer-screen.jpg" alt="Timer screen" width="240"> | |
+
+## 3D Printed Stand
+
+A custom **angled desk stand with a pen holder and USB passthrough** designed for the M5Dial. Download the print files from Printables:
+
+[M5Stack Dial Angled Desk Stand with Pen Holder & USB](https://www.printables.com/model/1758751-m5stack-dial-angled-desk-stand-with-pen-holder-usb)
+
+<p align="center">
+  <img src="img/3d-printed-case.jpg" alt="3D printed angled desk stand for the M5Stack Dial" width="360">
+</p>
 
 ## Hardware
 
