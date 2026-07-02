@@ -13,13 +13,13 @@
 /* ---- Cyberpunk amber palette (RGB888) ---- */
 namespace
 {
-    constexpr uint32_t COL_BG_TOP   = 0x1A1206; /* warm dark        */
+    constexpr uint32_t COL_BG_TOP   = 0x1A1606; /* warm dark  (CP2077) */
     constexpr uint32_t COL_BG_BOT   = 0x070401; /* near-black        */
-    constexpr uint32_t COL_AMBER    = 0xFFB000; /* amber             */
-    constexpr uint32_t COL_YELLOW   = 0xFFE66D; /* bright yellow     */
+    constexpr uint32_t COL_AMBER    = 0xFFB000; /* warm amber        */
+    constexpr uint32_t COL_YELLOW   = 0xFCEE0A; /* signature yellow  */
     constexpr uint32_t COL_ORANGE   = 0xFF6A1A; /* hot orange        */
-    constexpr uint32_t COL_MAGENTA  = 0xFF2D95; /* hot magenta       */
-    constexpr uint32_t COL_CYAN     = 0x00E5FF; /* accent cyan       */
+    constexpr uint32_t COL_MAGENTA  = 0xFF2A6D; /* hot pink-magenta  */
+    constexpr uint32_t COL_CYAN     = 0x00F0FF; /* electric cyan     */
     constexpr uint32_t COL_SCAN     = 0x261A06; /* scanline tint     */
     constexpr uint32_t COL_DIM      = 0x423012; /* unlit tick        */
 

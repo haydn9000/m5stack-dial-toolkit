@@ -12,16 +12,16 @@
 /* ---- Neon palette (RGB888) ---- */
 namespace
 {
-    constexpr uint32_t COL_BG_TOP   = 0x06121A; /* dark teal-black */
-    constexpr uint32_t COL_BG_BOT   = 0x01040A; /* near-black      */
-    constexpr uint32_t COL_CYAN     = 0x00E5FF; /* neon cyan       */
-    constexpr uint32_t COL_MAGENTA  = 0xFF2D95; /* hot magenta     */
+    constexpr uint32_t COL_BG_TOP   = 0x0A1622; /* dark cool black (CP2077) */
+    constexpr uint32_t COL_BG_BOT   = 0x02060C; /* near-black      */
+    constexpr uint32_t COL_CYAN     = 0x00F0FF; /* electric cyan   */
+    constexpr uint32_t COL_MAGENTA  = 0xFF2A6D; /* hot pink-magenta*/
     constexpr uint32_t COL_PINK     = 0xFF6EC7; /* soft pink       */
-    constexpr uint32_t COL_SCAN     = 0x0A2630; /* scanline tint   */
+    constexpr uint32_t COL_SCAN     = 0x0C1C28; /* scanline tint   */
     constexpr uint32_t COL_DIM      = 0x123642; /* unlit tick      */
-    constexpr uint32_t COL_AMBER    = 0xFFB000; /* searching       */
-    constexpr uint32_t COL_GREEN    = 0x39FF7A; /* online          */
-    constexpr uint32_t COL_RED      = 0xFF2244; /* mute / alert    */
+    constexpr uint32_t COL_AMBER    = 0xFCEE0A; /* signature yellow*/
+    constexpr uint32_t COL_GREEN    = 0x00FF9F; /* online          */
+    constexpr uint32_t COL_RED      = 0xFF003C; /* mute / alert    */
 
     constexpr float DEG2RAD = 0.0174532925f;
 

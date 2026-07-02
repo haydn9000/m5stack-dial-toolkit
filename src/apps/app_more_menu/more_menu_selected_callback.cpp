@@ -87,6 +87,11 @@ void MoreMenu::_item_selected_callback(uint8_t selectedNum)
         _run_app(new MOONCAKE::USER_APP::RTC_Test, 0x577EFF, image_data_icon_rtc);
         return;
     }
+    if (selected_item_tag == "Set Time")
+    {
+        _run_app(new MOONCAKE::USER_APP::SetTime, 0x33B5C4, image_data_icon_rtc);
+        return;
+    }
     if (selected_item_tag == "RFID Scan")
     {
         _run_app(new MOONCAKE::USER_APP::RFID_Test, 0x03A964, image_data_icon_rfid);

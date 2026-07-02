@@ -15,18 +15,19 @@
 
 namespace CYBER
 {
-    /* --- Neon palette (muted: cyberpunk hues, easier on the eyes) --- */
-    constexpr uint32_t BG       = 0x05070D;  // near-black blue
-    constexpr uint32_t SCANLINE = 0x0A0F18;  // faint CRT scanline
-    constexpr uint32_t TRACK    = 0x132030;  // dim ring track
-    constexpr uint32_t BORDER   = 0x24384C;  // ring edge line
-    constexpr uint32_t CYAN     = 0x33B5C4;  // muted cyan
-    constexpr uint32_t MAGENTA  = 0xC2557E;  // dusty magenta
-    constexpr uint32_t AMBER    = 0xD79A3A;  // muted amber
-    constexpr uint32_t GREEN    = 0x4FBE8B;  // muted mint
-    constexpr uint32_t RED      = 0xCE5060;  // muted red
-    constexpr uint32_t WHITE    = 0xDCEAF0;  // soft off-white
-    constexpr uint32_t DIMTEXT  = 0x5A7488;
+    /* --- Cyberpunk 2077 palette: electric yellow + neon cyan + hot red on
+     *     near-black. The AMBER slot carries the signature CP2077 yellow. --- */
+    constexpr uint32_t BG       = 0x070B12;  // near-black, cool tint
+    constexpr uint32_t SCANLINE = 0x0C1420;  // faint CRT scanline
+    constexpr uint32_t TRACK    = 0x13293A;  // dim ring track
+    constexpr uint32_t BORDER   = 0x1F4A5E;  // ring edge line
+    constexpr uint32_t CYAN     = 0x00F0FF;  // electric cyan
+    constexpr uint32_t MAGENTA  = 0xFF2A6D;  // hot pink-magenta
+    constexpr uint32_t AMBER    = 0xFCEE0A;  // CP2077 signature electric yellow
+    constexpr uint32_t GREEN    = 0x00FF9F;  // neon mint
+    constexpr uint32_t RED      = 0xFF003C;  // alert red
+    constexpr uint32_t WHITE    = 0xEAF6FF;  // cool off-white core
+    constexpr uint32_t DIMTEXT  = 0x4E6B7C;
 
     /* Geometry of the progress ring on the round display */
     constexpr int CX    = 120;

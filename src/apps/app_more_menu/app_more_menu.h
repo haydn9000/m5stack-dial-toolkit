@@ -16,6 +16,7 @@
 
 #include "../app_lcd_test/app_lcd_test.h"
 #include "../app_rtc_test/app_rtc_test.h"
+#include "../app_set_time/app_set_time.h"
 #include "../app_rfid_test/app_rfid_test.h"
 #include "../app_wifi_scan/app_wifi_scan.h"
 #include "../app_ble_server/app_ble_server.h"

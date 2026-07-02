@@ -15,18 +15,18 @@
 
 
 /* Render setting */
-#define THEME_COLOR_FG              (uint32_t)0xfa7000
+#define THEME_COLOR_FG              (uint32_t)0xFCEE0A
 // #define THEME_COLOR_BG              (uint32_t)0x424242
 #define THEME_COLOR_BG              TFT_BLACK
-#define SELECTOR_COLOR              (uint32_t)0xF3E9D2
+#define SELECTOR_COLOR              (uint32_t)0xEAF6FF
 #define SELECTOR_RADIUS             5
 #define ICON_RADIUS                 22
 #define ICON_SELECTED_R_OFFSET      3
-#define ICON_TAG_COLOR              SELECTOR_COLOR
+#define ICON_TAG_COLOR              (uint32_t)0xFCEE0A
 #define ICON_TAG_UP_OFFSET          -24
 #define ICON_TAG_DOWN_OFFSET        0
 
-#define ICON_NUM                    6
+#define ICON_NUM                    7
 
 
 /* Strucut to hold icon value */
@@ -43,16 +43,19 @@ struct Icon_t
 /* Icon list */
 static std::array<Icon_t, ICON_NUM> icon_list;
 /* Icon color */
+/* Cyberpunk 2077 ring: electric cyan / yellow / hot red spread across icons */
 static std::array<uint32_t, ICON_NUM> icon_color_list = {
-    0x32BEA6,  // BLE Volume - teal (matches icon PNG background)
-    0xFFB300,  // Timer - amber
-    0x00E5FF,  // Stopwatch - cyan
-    0xFF2E88,  // Pomodoro - magenta
-    0x1AA198,  // Brightness
-    0x5D7BA2   // More
+    0x00F0FF,  // Watch Face - electric cyan (home / default landing app)
+    0xFF2A6D,  // BLE Volume - hot pink-magenta
+    0xFCEE0A,  // Timer      - signature yellow
+    0x00FF9F,  // Stopwatch  - neon mint
+    0xFF003C,  // Pomodoro   - alert red
+    0xFF9E00,  // Brightness - warm amber
+    0x3A6B8C   // More       - steel blue
 };
 /* Icon tag */
 static std::array<std::string, ICON_NUM * 2> icon_tag_list = {
+    "WATCH", "",
     "VOL", "CTRL",
     "TIMER", "",
     "STOPWATCH", "",
@@ -62,6 +65,7 @@ static std::array<std::string, ICON_NUM * 2> icon_tag_list = {
 };
 /* Icon pic */
 static std::array<const uint16_t*, ICON_NUM> icon_pic_list = {
+    image_data_icon_rtc,        // Watch Face (clock icon)
     image_data_icon_volume,
     image_data_icon_timer,
     image_data_icon_stopwatch,

@@ -15,6 +15,7 @@
 #include <driver/gpio.h>
 #include <string.h>
 #include <cmath>
+#include <cstdio>
 
 namespace HAL
 {
@@ -215,6 +216,56 @@ namespace HAL
         // buzz.tone(4000, 50);
     }
 
+    /* Day of week (0=Sun) via Sakamoto's algorithm. y = full year, m = 1-12. */
+    static int _day_of_week(int y, int m, int d)
+    {
+        static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+        if (m < 3) y -= 1;
+        return ((y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7 + 7) % 7;
+    }
+
+    /* Parse the firmware build timestamp (__DATE__ / __TIME__) into a tm. */
+    static bool _build_time(tm& t)
+    {
+        char mon[4] = {0};
+        int day = 0, year = 0, hh = 0, mm = 0, ss = 0;
+        if (sscanf(__DATE__, "%3s %d %d", mon, &day, &year) != 3) return false;
+        if (sscanf(__TIME__, "%d:%d:%d", &hh, &mm, &ss) != 3)     return false;
+        const char* p = strstr("JanFebMarAprMayJunJulAugSepOctNovDec", mon);
+        if (p == nullptr) return false;
+        t.tm_year  = year;                 // full year; PCF8563::setTime does -2000
+        t.tm_mon   = (int)(p - "JanFebMarAprMayJunJulAugSepOctNovDec") / 3;  // 0-11
+        t.tm_mday  = day;
+        t.tm_hour  = hh;
+        t.tm_min   = mm;
+        t.tm_sec   = ss;
+        t.tm_wday  = _day_of_week(year, t.tm_mon + 1, day);
+        t.tm_isdst = 0;
+        return true;
+    }
+
+    /* Seed the RTC from the build time if it has never been set (invalid
+     * year/month, e.g. a fresh device). No WiFi/serial needed — the PCF8563
+     * keeps time afterwards as long as it stays powered. A previously-set,
+     * plausible time is left untouched so reflashing doesn't reset the clock. */
+    static void _rtc_seed_if_unset(PCF8563::PCF8563& rtc)
+    {
+        rtc.init();   // ensure the oscillator is running (clears the STOP bit)
+
+        tm cur;
+        if (rtc.getTime(cur) == ESP_OK &&
+            cur.tm_year >= 2023 && cur.tm_mon >= 0 && cur.tm_mon <= 11)
+            return;
+
+        tm bt = {};
+        if (_build_time(bt))
+        {
+            rtc.setTime(bt);
+            ESP_LOGI(TAG, "RTC seeded from build time: %04d-%02d-%02d %02d:%02d:%02d",
+                     bt.tm_year, bt.tm_mon + 1, bt.tm_mday, bt.tm_hour, bt.tm_min, bt.tm_sec);
+        }
+    }
+
     void HAL::init()
     {
         ESP_LOGI(TAG, "init");
@@ -227,6 +278,9 @@ namespace HAL
         /* Init i2c port 0 (for Tp) */
         // i2c_init(I2C_NUM_0, 11, 12, 100000, true);
         i2c_init(I2C_NUM_0, HAL_PIN_TP_I2C_SDA, HAL_PIN_TP_I2C_SCL, 100000, true);
+
+        /* Set the clock from build time on a fresh device (RTC shares I2C_NUM_0) */
+        _rtc_seed_if_unset(rtc);
 
         /* Display init */
         _display_init();

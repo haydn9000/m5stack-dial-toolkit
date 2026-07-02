@@ -57,6 +57,8 @@ src/
     ├── launcher/                   # Main launcher with circular icon menu
     ├── app_lcd_test/               # LCD test app
     ├── app_rtc_test/               # RTC clock display app
+    ├── app_watchface/              # Cyberpunk "SCOPE" watch face — main launcher home (index 0). Radar second-sweep + phosphor trail; turn=toggle date layer, press=back to time, hold=exit. Prototype: design/watchface-scope.html. RTC is seeded from build time on first boot (hal.cpp::_rtc_seed_if_unset).
+    ├── app_set_time/               # On-device RTC setter (turn=adjust field, press=next field, hold=save+exit); cyber-styled with Font7 value + field progress ring
     ├── app_rfid_test/              # RFID card scanner app
     ├── app_set_brightness/         # Brightness control app
     ├── app_wifi_scan/              # WiFi network scanner app
@@ -146,7 +148,7 @@ The original project used ESP-IDF 5.1.3. Key differences in this port:
 
 ## Launcher Layout
 
-The **main launcher** shows 6 icons clustered in a tight arc at the top (not spread around the full ring): **VOL** (BLE Volume, index 0), **TIMER** (index 1), **STOPWATCH** (index 2), **POMODORO** (index 3), **BRIGHTNESS** (Set Brightness, index 4), and **MORE** (index 5). `ICON_NUM` in `launcher_render_callback.hpp` controls the icon/menu count; the arc spacing/center are set by `arc_step`/`arc_center` in `launcher.cpp` (`_menu_init` and `_icon_list_init`). The switch in `launcher.cpp::_app_open_callback()` must match the icon order.
+The **main launcher** shows 7 icons clustered in a tight arc at the top (not spread around the full ring): **WATCH** (Watch Face, index 0 — the home/default-highlighted app on boot), **VOL** (BLE Volume, index 1), **TIMER** (index 2), **STOPWATCH** (index 3), **POMODORO** (index 4), **BRIGHTNESS** (Set Brightness, index 5), and **MORE** (index 6). `ICON_NUM` in `launcher_render_callback.hpp` controls the icon/menu count. The arc spacing/center are set by `arc_step` (36° between icons) / `arc_center` in `launcher.cpp` (`_menu_init` and `_icon_list_init`). The switch in `launcher.cpp::_app_open_callback()` must match the icon order, and the MORE special-case (`selectedNum != 6`) must track MORE's index.
 
 All other apps live in the **More menu** (`app_more_menu/`), shown as a vertical list with each app's icon drawn to the left of its name. To move/add an app there:
 - Add the app's `#include` to `app_more_menu.h`.

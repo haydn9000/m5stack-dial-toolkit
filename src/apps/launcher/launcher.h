@@ -27,6 +27,7 @@
 #include "../app_pomodoro/app_pomodoro.h"
 #include "../app_timer/app_timer.h"
 #include "../app_stopwatch/app_stopwatch.h"
+#include "../app_watchface/app_watchface.h"
 
 
 

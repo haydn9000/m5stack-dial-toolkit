@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M5Dial — SCOPE watch face concept</title>
+<style>
+  :root{
+    --bg:#05070d; --panel:#02040a;
+    --cyan:#33b5c4; --magenta:#c2557e; --amber:#d79a3a;
+    --white:#dceaf0; --label:#5a7488; --track:#132030;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(120% 120% at 50% 0%, #0b1220 0%, #05070d 46%, #010208 100%);
+    color:var(--white);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; gap:34px; padding:40px 16px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* physical dial bezel so it reads as the device on a desk */
+  .dial{
+    --size:420px;
+    width:var(--size); height:var(--size);
+    border-radius:50%;
+    padding:18px;
+    background:
+      radial-gradient(60% 60% at 38% 30%, #23262b 0%, #14161a 40%, #0a0b0e 72%, #050608 100%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.06) inset,
+      0 -14px 34px rgba(0,0,0,.6) inset,
+      0 30px 70px -20px rgba(0,0,0,.85),
+      0 4px 14px rgba(0,0,0,.6);
+    position:relative;
+  }
+  .dial::after{ /* thin machined ring highlight */
+    content:""; position:absolute; inset:9px; border-radius:50%;
+    border:1px solid rgba(120,140,160,.10);
+    box-shadow:0 0 0 1px rgba(0,0,0,.6) inset;
+    pointer-events:none;
+  }
+  .glass{
+    width:100%; height:100%; border-radius:50%;
+    overflow:hidden; position:relative;
+    box-shadow:0 0 40px -8px rgba(51,181,196,.18);
+  }
+  canvas{display:block; width:100%; height:100%; border-radius:50%}
+  /* faint curved glass glare */
+  .glass::after{
+    content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:radial-gradient(90% 60% at 32% 14%, rgba(255,255,255,.07), rgba(255,255,255,0) 42%);
+  }
+
+  .meta{
+    display:flex; align-items:center; gap:22px;
+    color:var(--label); font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+  }
+  .meta .name{color:var(--cyan); letter-spacing:.32em}
+  .sep{width:1px; height:12px; background:#1b2836}
+
+  .toggle{
+    display:inline-flex; align-items:center; gap:9px; cursor:pointer;
+    color:var(--label); user-select:none;
+  }
+  .sw{
+    width:34px; height:16px; border-radius:9px; background:#0d1622;
+    border:1px solid #1e2f42; position:relative; transition:border-color .2s, background .2s;
+  }
+  .sw::before{
+    content:""; position:absolute; top:1px; left:1px; width:12px; height:12px;
+    border-radius:50%; background:#3b4c5e; transition:transform .18s, background .18s;
+  }
+  .toggle.on .sw{border-color:var(--cyan); background:rgba(51,181,196,.12)}
+  .toggle.on .sw::before{transform:translateX(18px); background:var(--cyan)}
+  .toggle.on{color:var(--cyan)}
+
+  @media (max-width:480px){ .dial{--size:min(84vw,360px)} }
+  @media (prefers-reduced-motion: reduce){ .glass{box-shadow:none} }
+</style>
+</head>
+<body>
+  <div class="dial">
+    <div class="glass"><canvas id="c"></canvas></div>
+  </div>
+
+  <div class="meta">
+    <span class="name">M5DIAL &middot; SCOPE</span>
+    <span class="sep"></span>
+    <label class="toggle" id="detent" title="Preview the real RTC behaviour: sweep steps once per second">
+      <span class="sw"></span><span>DETENT&nbsp;1&nbsp;HZ</span>
+    </label>
+  </div>
+
+<script>
+(() => {
+  const C = {
+    bg:'#05070d', track:'#132030', border:'#24384c',
+    cyan:'#33b5c4', magenta:'#c2557e', amber:'#d79a3a',
+    white:'#dceaf0', label:'#5a7488', dim:'#0a0f18',
+  };
+  const CX=120, CY=120;          // 240x240 logical, matches cyber_ui
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // hi-dpi crisp render on a 240-logical grid
+  function size(){
+    const dpr = Math.min(window.devicePixelRatio||1, 3);
+    const cssW = canvas.clientWidth || 420;
+    canvas.width  = Math.round(cssW*dpr);
+    canvas.height = Math.round(cssW*dpr);
+    const s = canvas.width/240;
+    ctx.setTransform(s,0,0,s,0,0);
+  }
+  new ResizeObserver(size).observe(canvas);
+  size();
+
+  let detent = false;
+  const detBtn = document.getElementById('detent');
+  detBtn.addEventListener('click', () => { detent=!detent; detBtn.classList.toggle('on', detent); });
+
+  /* ---------- colour helpers (mirror CYBER::blend) ---------- */
+  const hx = h => [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  function blend(fg,bg,a){
+    const f=hx(fg), b=hx(bg);
+    const r=f[0]*a+b[0]*(1-a), g=f[1]*a+b[1]*(1-a), bl=f[2]*a+b[2]*(1-a);
+    return 'rgb('+(r|0)+','+(g|0)+','+(bl|0)+')';
+  }
+  const rgba = (h,a)=>{const c=hx(h);return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')';};
+  const D2R = Math.PI/180;
+  const spaced = t => t.split('').join(String.fromCharCode(32));
+
+  /* ---------- background: gradient + CRT scanlines + vignette ---------- */
+  function background(){
+    const top = blend(C.cyan, C.bg, 0.10);
+    const g = ctx.createLinearGradient(0,0,0,240);
+    g.addColorStop(0, top); g.addColorStop(1, C.bg);
+    ctx.fillStyle=g; ctx.fillRect(0,0,240,240);
+
+    ctx.fillStyle=C.dim;
+    for(let y=0;y<240;y+=4) ctx.fillRect(0,y,240,1);   // scanlines
+
+    // vignette toward the bezel
+    const v=ctx.createRadialGradient(CX,CY,70,CX,CY,124);
+    v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.55)');
+    ctx.fillStyle=v; ctx.beginPath(); ctx.arc(CX,CY,124,0,7); ctx.fill();
+  }
+
+  /* ---------- rim: 60 ticks, hour brackets, neon edge ---------- */
+  function rim(litSecFloat){
+    ctx.strokeStyle=rgba(C.cyan,.55); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(CX,CY,117,0,7); ctx.stroke();
+    ctx.strokeStyle=rgba(C.cyan,.14);
+    ctx.beginPath(); ctx.arc(CX,CY,114,0,7); ctx.stroke();
+
+    for(let i=0;i<60;i++){
+      const major = i%5===0;
+      const a=(-90+i*6)*D2R;
+      const r1= major?106:110, r2=116;
+      const d1=((i-litSecFloat)+60)%60, d2=((litSecFloat-i)+60)%60;
+      const near=Math.min(d1,d2);
+      let col;
+      if(near<0.9){                       // tick the sweep is passing = hot
+        const t=1-near/0.9;
+        col=blend(C.white, C.cyan, 0.5*t);
+        ctx.lineWidth = major?2.4:1.8;
+      }else{
+        col = major? rgba(C.cyan,.42) : rgba(C.border,.9);
+        ctx.lineWidth = major?1.8:1;
+      }
+      ctx.strokeStyle=col;
+      ctx.beginPath();
+      ctx.moveTo(CX+r1*Math.cos(a), CY+r1*Math.sin(a));
+      ctx.lineTo(CX+r2*Math.cos(a), CY+r2*Math.sin(a));
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle=rgba(C.cyan,.5); ctx.lineWidth=1.4;
+    [45,135,225,315].forEach(deg=>{
+      const a=deg*D2R, r=100, len=9;
+      const bx=CX+r*Math.cos(a), by=CY+r*Math.sin(a);
+      const tx=-Math.sin(a), ty=Math.cos(a);
+      ctx.beginPath();
+      ctx.moveTo(bx-tx*len,by-ty*len); ctx.lineTo(bx+tx*len,by+ty*len); ctx.stroke();
+    });
+  }
+
+  /* ---------- signature: radar sweep + decaying phosphor trail ---------- */
+  function sweep(secFloat){
+    const ang = (-90 + secFloat*6);      // degrees, from top CW
+    const rIn=14, rOut=113;
+    const trail = 58;                    // phosphor persistence, degrees
+    const slices = reduce?1:26;
+    for(let k=0;k<slices;k++){
+      const a0=(ang - trail*(k+1)/slices);
+      const a1=(ang - trail*k/slices);
+      const fade=1-k/slices;
+      const alpha=0.28*fade*fade;
+      if(alpha<0.004) continue;
+      ctx.fillStyle=rgba(C.cyan,alpha);
+      ctx.beginPath(); ctx.moveTo(CX,CY);
+      ctx.arc(CX,CY,rOut,a0*D2R,a1*D2R); ctx.closePath(); ctx.fill();
+    }
+    const a=ang*D2R;
+    const gx=CX+rOut*Math.cos(a), gy=CY+rOut*Math.sin(a);
+    const lg=ctx.createLinearGradient(CX,CY,gx,gy);
+    lg.addColorStop(0, rgba(C.cyan,0));
+    lg.addColorStop(0.55, rgba(C.cyan,.5));
+    lg.addColorStop(1, C.white);
+    ctx.strokeStyle=lg; ctx.lineWidth=2; ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(CX+rIn*Math.cos(a),CY+rIn*Math.sin(a)); ctx.lineTo(gx,gy); ctx.stroke();
+    ctx.fillStyle=rgba(C.cyan,.45);
+    ctx.beginPath(); ctx.arc(gx,gy,4,0,7); ctx.fill();
+    ctx.fillStyle=C.white;
+    ctx.beginPath(); ctx.arc(gx,gy,1.8,0,7); ctx.fill();
+  }
+
+  /* ---------- 7-segment digits (faithful to Font7 for the C++ port) ---------- */
+  const SEGS = {
+    a:[0.14,0.00,0.72,'h'], b:[0.86,0.06,0.44,'v'], c:[0.86,0.52,0.44,'v'],
+    d:[0.14,0.96,0.72,'h'], e:[0.00,0.52,0.44,'v'], f:[0.00,0.06,0.44,'v'],
+    g:[0.14,0.48,0.72,'h'],
+  };
+  const ON = {
+    '0':'abcdef','1':'bc','2':'abged','3':'abgcd','4':'fgbc','5':'afgcd',
+    '6':'afgedc','7':'abc','8':'abcdefg','9':'abcfgd',
+  };
+  function segPath(seg,x,y,w,h,th){
+    const fx=seg[0], fy=seg[1], fl=seg[2], dir=seg[3];
+    if(dir==='h'){
+      const sx=x+fx*w, sy=y+fy*h, len=fl*w;
+      ctx.beginPath();
+      ctx.moveTo(sx+th/2, sy-th/2);
+      ctx.lineTo(sx+len-th/2, sy-th/2);
+      ctx.lineTo(sx+len, sy);
+      ctx.lineTo(sx+len-th/2, sy+th/2);
+      ctx.lineTo(sx+th/2, sy+th/2);
+      ctx.lineTo(sx, sy);
+      ctx.closePath();
+    }else{
+      const sx=x+fx*w, sy=y+fy*h, len=fl*h;
+      ctx.beginPath();
+      ctx.moveTo(sx-th/2, sy+th/2);
+      ctx.lineTo(sx-th/2, sy+len-th/2);
+      ctx.lineTo(sx, sy+len);
+      ctx.lineTo(sx+th/2, sy+len-th/2);
+      ctx.lineTo(sx+th/2, sy+th/2);
+      ctx.lineTo(sx, sy);
+      ctx.closePath();
+    }
+  }
+  function digit(ch,x,y,w,h,color){
+    const th=Math.min(w,h)*0.16;
+    const active=ON[ch]||'';
+    for(const k in SEGS){
+      ctx.fillStyle = active.indexOf(k)>=0 ? color : rgba(C.cyan,.05);
+      segPath(SEGS[k],x,y,w,h,th); ctx.fill();
+    }
+  }
+  function bigTime(hh,mm,colonOn){
+    const dw=32, dh=52, gap=8, colonW=14;
+    const total=dw*4+gap*4+colonW;
+    const x0=CX-total/2, y=CY-dh/2-4;
+    const s=[hh[0],hh[1],mm[0],mm[1]];
+    const drawSet=(dx,color)=>{
+      let x=x0+dx;
+      digit(s[0],x,y,dw,dh,color); x+=dw+gap;
+      digit(s[1],x,y,dw,dh,color); x+=dw+gap;
+      if(colonOn){
+        ctx.fillStyle=color;
+        ctx.beginPath(); ctx.arc(x+colonW/2, y+dh*0.34, 2.6,0,7); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+colonW/2, y+dh*0.66, 2.6,0,7); ctx.fill();
+      }
+      x+=colonW+gap;
+      digit(s[2],x,y,dw,dh,color); x+=dw+gap;
+      digit(s[3],x,y,dw,dh,color);
+    };
+    drawSet(+1.6, blend(C.magenta,C.bg,.6));   // chromatic ghost R
+    drawSet(-1.6, blend(C.cyan,C.bg,.6));       // chromatic ghost L
+    drawSet(0,    C.white);                      // bright core
+  }
+
+  /* ---------- eyebrow + date ---------- */
+  function label(txt,y,color,px,track){
+    ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=px+'px ui-monospace, "SF Mono", Menlo, monospace';
+    ctx.fillText(track ? spaced(txt) : txt, CX, y);
+  }
+
+  const DOW=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const MON=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+  function frame(){
+    const now=new Date();
+    let sec = now.getSeconds() + now.getMilliseconds()/1000;
+    if(detent) sec = now.getSeconds();          // preview 1 Hz RTC stepping
+    const hh=String(now.getHours()).padStart(2,'0');
+    const mm=String(now.getMinutes()).padStart(2,'0');
+    const colonOn = now.getMilliseconds()<500;
+    const topOfHour = now.getMinutes()===0;
+
+    background();
+    rim(sec);
+    sweep(sec);
+
+    label(topOfHour?'- TOP OF HOUR -':'SYS - ONLINE', 44,
+          topOfHour? C.amber : rgba(C.label,.85), 8, true);
+
+    bigTime(hh,mm,colonOn);
+
+    const dstr = DOW[now.getDay()]+'  '+String(now.getDate()).padStart(2,'0')+' '+MON[now.getMonth()];
+    label(dstr, 168, rgba(C.cyan,.75), 10, true);
+    label(String(now.getSeconds()).padStart(2,'0'), 190, rgba(C.label,.9), 9, false);
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

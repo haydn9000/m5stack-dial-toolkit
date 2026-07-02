@@ -27,6 +27,7 @@ void MoreMenu::_create_menu()
         nullptr,                  // Quit
         image_data_icon_lcd,      // LCD Test
         image_data_icon_rtc,      // RTC Clock
+        image_data_icon_rtc,      // Set Time
         image_data_icon_rfid,     // RFID Scan
         image_data_icon_wifi,     // WiFi Scan
         image_data_icon_ble,      // BLE Server
@@ -57,6 +58,7 @@ void MoreMenu::_create_menu()
         "Quit",
         "LCD Test",
         "RTC Clock",
+        "Set Time",
         "RFID Scan",
         "WiFi Scan",
         "BLE Server",
