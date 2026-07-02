@@ -10,11 +10,13 @@ The M5Dial is an ESP32-S3 rotary-encoder device with a 240×240 round display, t
 
 ## Features
 
+- **Watch Face** — the home screen: a cyberpunk "SCOPE" radar clock. A second-sweep hand rotates the rim once a minute with a phosphor trail, `HH:MM` sits in the centre, and turning the dial flips to a date layer (weekday, date, month progress). Press returns to the time, hold exits.
 - **BLE Volume Controller** — acts as a Bluetooth HID device so the dial controls your computer's master volume. Rotate to adjust, press to mute. Mute-aware: while muted you can keep lowering the level (and drive the host all the way to 0) or rotate up to unmute.
 - **Stopwatch / Timer / Pomodoro** — three time apps. The stopwatch times with centisecond precision, the countdown timer ends with a loud resonant alarm, and the pomodoro tracks focus/break cycles with session dots.
-- **Brightness Control** — adjust and persist screen brightness (saved to NVS, restored on boot).
-- **More menu** — extra apps: LCD test, RTC clock, RFID scanner, WiFi scanner, BLE heart-rate server, temperature demo, and power off.
-- **Cyberpunk HUD UI** — neon gauges, CRT scanlines, 7-segment readouts, and a synthwave boot splash.
+- **Set Time** — set the RTC on-device: turn to adjust the highlighted field, press for the next field, hold to save.
+- **Brightness Control** — adjust screen brightness as a clean 0–100 % (persisted to NVS, restored on boot).
+- **More menu** — extra apps: LCD test, RTC clock, Set Time, RFID scanner, WiFi scanner, BLE heart-rate server, temperature demo, and power off.
+- **Neon-cyberpunk UI** — an electric-yellow / cyan / red palette on near-black, CRT scanlines, an asymmetric HUD frame, 7-segment readouts with a glitchy chromatic-aberration shadow, a "decrypt" boot-in animation on the time apps, and cyberpunk buzzer sound effects (sweeps and arpeggios rather than flat beeps). HTML design prototypes live in [`design/`](design/).
 
 ## Screenshots
 
@@ -61,6 +63,10 @@ pio device monitor
 ```
 
 To use the **BLE Volume Controller**, open the app on the dial, then pair with `M5Dial Volume` from your computer's Bluetooth settings.
+
+### Keeping time
+
+On first boot the firmware seeds the RTC from the build timestamp, so the clock is roughly correct right after flashing; you can fine-tune it in **Set Time**. Note the M5Dial has **no RTC backup battery by default** — unplug it for more than a moment and the clock resets (re-seeding to build time on the next boot). To retain time while unplugged, add a battery to the on-board RTC backup socket, or keep the dial powered.
 
 ## Project Structure
 

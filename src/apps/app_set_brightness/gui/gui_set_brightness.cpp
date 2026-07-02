@@ -13,7 +13,7 @@
 /* ---- Cyberpunk amber palette (RGB888) ---- */
 namespace
 {
-    constexpr uint32_t COL_BG_TOP   = 0x1A1606; /* warm dark  (CP2077) */
+    constexpr uint32_t COL_BG_TOP   = 0x1A1606; /* warm dark  (neon) */
     constexpr uint32_t COL_BG_BOT   = 0x070401; /* near-black        */
     constexpr uint32_t COL_AMBER    = 0xFFB000; /* warm amber        */
     constexpr uint32_t COL_YELLOW   = 0xFCEE0A; /* signature yellow  */

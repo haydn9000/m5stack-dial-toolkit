@@ -12,7 +12,7 @@
 /* ---- Neon palette (RGB888) ---- */
 namespace
 {
-    constexpr uint32_t COL_BG_TOP   = 0x0A1622; /* dark cool black (CP2077) */
+    constexpr uint32_t COL_BG_TOP   = 0x0A1622; /* dark cool black (neon) */
     constexpr uint32_t COL_BG_BOT   = 0x02060C; /* near-black      */
     constexpr uint32_t COL_CYAN     = 0x00F0FF; /* electric cyan   */
     constexpr uint32_t COL_MAGENTA  = 0xFF2A6D; /* hot pink-magenta*/

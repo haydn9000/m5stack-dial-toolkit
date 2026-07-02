@@ -168,24 +168,13 @@ namespace HAL
     void HAL::_encoder_moved_callback(ESP32Encoder* encoder, void* userData)
     {
         int new_shit = static_cast<int>(encoder->getCount()) / 2;
-        if (new_shit < _last_count)
-        {
-            // printf("???\n");
-            ((HAL*)userData)->buzz.tone(7000, 20);
-            _last_count = new_shit;
-        }
-        else
-        {
-            // printf("666\n");
-            ((HAL*)userData)->buzz.tone(6000, 20);
-            _last_count = new_shit;
-        }
+        ((HAL*)userData)->buzz.fxTick(new_shit > _last_count);   // rising when CW
+        _last_count = new_shit;
     }
 
     void HAL::_encoder_button_pressed_callback(Button* button, void* userData)
     {
-        // printf("114514\n");
-        ((HAL*)userData)->buzz.tone(2000, 20);
+        ((HAL*)userData)->buzz.fxPress();
     }
 
     void HAL::_encoder_init()

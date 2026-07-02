@@ -43,7 +43,7 @@ struct Icon_t
 /* Icon list */
 static std::array<Icon_t, ICON_NUM> icon_list;
 /* Icon color */
-/* Cyberpunk 2077 ring: electric cyan / yellow / hot red spread across icons */
+/* Neon cyberpunk ring: electric cyan / yellow / hot red spread across icons */
 static std::array<uint32_t, ICON_NUM> icon_color_list = {
     0x00F0FF,  // Watch Face - electric cyan (home / default landing app)
     0xFF2A6D,  // BLE Volume - hot pink-magenta
@@ -132,6 +132,10 @@ struct LauncherRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
             int new_r = 20;
             int icon_tag_x = (selector.x - 120) * new_r / 120 + 120;
             int icon_tag_y = (selector.y - 120) * new_r / 120 + 120;
+
+            /* Always fix the text size — an app just closed may have left the
+             * canvas at a larger size, which would blow up the tag text. */
+            _canvas->setTextSize(1);
 
             /* If pointing a icon */
             if (selector.targetItem < icon_list.size())

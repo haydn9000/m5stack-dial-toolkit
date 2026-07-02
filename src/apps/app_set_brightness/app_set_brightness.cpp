@@ -34,68 +34,44 @@ void Set_Brightness::onCreate()
 {
     _log("onCreate");
 
-    /* Get current brightness */
-    _data.brightness = _data.hal->display.getBrightness();
-    _log("get brightness: %d\n", _data.brightness);
+    /* Get current brightness (0..255) as a percentage */
+    uint8_t cur = _data.hal->display.getBrightness();
+    _data.pct = (cur * 100 + 127) / 255;
+    _log("get brightness: %d (%d%%)", cur, _data.pct);
 
     /* Update page for the first time */
-    _gui.renderPage(_data.brightness);
+    _gui.renderPage(cur);
 
-    /* Anim init */
-    _data.brightness_anim.setAnim(LVGL::ease_out, _data.brightness, _data.brightness, 0);
+    /* Anim init + encoder baseline */
+    _data.brightness_anim.setAnim(LVGL::ease_out, cur, cur, 0);
+    _data.last_raw = _data.hal->encoder.getCount();
 }
 
 
 void Set_Brightness::onRunning()
 {
-    /* If scrolled */
-    if (_data.hal->encoder.wasMoved(true))
+    /* Turn the dial — read whole detents (half-quad: 2 raw counts = 1 detent)
+     * so one click = one step. Each detent moves a clearly-visible amount;
+     * turning faster stacks detents per loop for natural acceleration. */
+    int64_t raw   = _data.hal->encoder.getCount();
+    int64_t delta = raw - _data.last_raw;
+    if (delta <= -2 || delta >= 2)
     {
-        /* Get scroll delta */
-        _data.delta_time = millis() - _data.scroll_speed_time_count;
+        int detents = (int)(delta / 2);
+        _data.last_raw += (int64_t)detents * 2;
 
-        /* Get increment */
-        /* y = -(1/8)x + 10 */
-        _data.brightness_increment = 10 - _data.delta_time / 8;
-        /* Y = 1 */
-        if (_data.brightness_increment < 1)
-        {
-            _data.brightness_increment = 1;
-        }
-        // _log("delta: %d increment: %d", _data.delta_time, _data.brightness_increment);
-        
+        _data.pct += detents;                // +/-1% per detent; CW (raw up) = brighter
+        if (_data.pct > 100) _data.pct = 100;
+        if (_data.pct < 0)   _data.pct = 0;
 
-        // printf("%d\n", _data.hal->encoder.getPosition());
-        if (_data.hal->encoder.getDirection() < 1)
-        {
-            _data.brightness += _data.brightness_increment;
-            if (_data.brightness > 0xFF)
-            {
-                _data.brightness = 0xFF;
-            }
-        }
-        else
-        {
-            _data.brightness -= _data.brightness_increment;
-            if (_data.brightness < 0)
-            {
-                _data.brightness = 0;
-            }
-        }
+        int mapped = (_data.pct * 255 + 50) / 100;   // percent -> 0..255 backlight
+        _data.hal->buzz.fxTick(detents > 0);   // click feedback
+        _log("set to: %d%% (%d)", _data.pct, mapped);
+        _gui.renderPage((uint8_t)mapped);
 
-        /* Set brightness */
-        _log("set to: %d", _data.brightness);
-        _gui.renderPage(_data.brightness);
-        // _data.hal->display.setBrightness(_data.brightness);
-
-
-        /* Reset anim */
-        _data.brightness_anim.setAnim(LVGL::ease_out, _data.brightness_anim.getValue(millis()), _data.brightness, 600);
+        _data.brightness_anim.setAnim(LVGL::ease_out,
+            _data.brightness_anim.getValue(millis()), mapped, 400);
         _data.brightness_anim.resetTime(millis());
-        
-
-        /* Reset time count */
-        _data.scroll_speed_time_count = millis();
     }
 
 
@@ -123,10 +99,11 @@ void Set_Brightness::onDestroy()
 {
     _log("onDestroy");
 
-    /* Persist brightness across power cycles (NVS) */
+    /* Persist brightness across power cycles (NVS, stored as 0..255) */
+    int mapped = (_data.pct * 255 + 50) / 100;
     Preferences prefs;
     prefs.begin("settings", false);
-    prefs.putInt("bright", _data.brightness);
+    prefs.putInt("bright", mapped);
     prefs.end();
-    _log("saved brightness: %d", _data.brightness);
+    _log("saved brightness: %d (%d%%)", mapped, _data.pct);
 }

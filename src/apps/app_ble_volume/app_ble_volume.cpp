@@ -217,9 +217,9 @@ void BLE_Volume::onRunning()
             }
         }
 
-        /* Beep only at the extreme ends (0/mute or 100), identical tone for both. */
+        /* Blip only at the extreme ends (0/mute or 100), identical for both. */
         if (_data.volume == 0 || _data.volume == 100)
-            _data.hal->buzz.tone(8000, 30);
+            _data.hal->buzz.fxTick(true);
 
         /* Persist for next time the app is opened */
         _saved_volume = _data.volume;

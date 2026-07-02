@@ -29,6 +29,7 @@ namespace MOONCAKE
                 uint32_t remaining   = 0;
                 int64_t  last_raw    = 0;
                 uint32_t last_render = 0;
+                uint32_t boot_start  = 0;     // millis() at open, for the boot-in
             };
         }
 

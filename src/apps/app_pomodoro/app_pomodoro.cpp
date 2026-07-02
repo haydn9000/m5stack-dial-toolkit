@@ -104,25 +104,28 @@ void Pomodoro::_render()
     if (_data.run == POMODORO::PAUSED)
         accent = CYBER::blend(accent, CYBER::BG, 0.55f);
 
-    const char* sub;
+    const char* code;
     const char* hint;
-    if (_data.run == POMODORO::RUNNING)      { sub = "RUNNING"; hint = "PRESS = PAUSE   HOLD = EXIT"; }
-    else if (_data.run == POMODORO::PAUSED)  { sub = "PAUSED";  hint = "PRESS = RESUME   TURN = PHASE"; }
-    else                                     { sub = "READY";   hint = "PRESS = START   TURN = PHASE"; }
+    if (_data.run == POMODORO::RUNNING)      { code = "RUN"; hint = "PRESS = PAUSE   HOLD = EXIT"; }
+    else if (_data.run == POMODORO::PAUSED)  { code = "PSE"; hint = "PRESS = RESUME   TURN = PHASE"; }
+    else                                     { code = "RDY"; hint = "PRESS = START   TURN = PHASE"; }
 
     uint32_t denom = (_data.run == POMODORO::IDLE) ? _phase_duration(_data.phase)
                                                    : _data.duration_ms;
     float ring = denom ? (float)r / (float)denom : 1.0f;
 
+    uint32_t bootMs = millis() - _data.boot_start;
+
     char big[12];
     snprintf(big, sizeof(big), "%02u:%02u", (unsigned)m, (unsigned)s);
 
     LGFX_Sprite* cv = _data.hal->canvas;
-    CYBER::background(cv, accent);
-    CYBER::progressRing(cv, ring, accent);
-    CYBER::title(cv, PHASE_LABEL[_data.phase], accent);
-    CYBER::subtitle(cv, sub, accent);
-    CYBER::bigTime(cv, big, CYBER::WHITE);
+    CYBER::hudChrome(cv, PHASE_LABEL[_data.phase], code, accent, bootMs);
+    CYBER::progressRing(cv, ring * CYBER::bootProgress(bootMs), accent);
+
+    char shown[12];
+    CYBER::scrambleTime(shown, big, bootMs);
+    CYBER::bigTime(cv, shown, CYBER::WHITE);
 
     /* Four session dots: filled = completed focus blocks this cycle */
     for (int i = 0; i < WORK_TARGET; i++)
@@ -157,7 +160,8 @@ void Pomodoro::onSetup()
 void Pomodoro::onCreate()
 {
     _log("onCreate");
-    _data.last_raw = _data.hal->encoder.getCount();
+    _data.last_raw   = _data.hal->encoder.getCount();
+    _data.boot_start = millis();
     _render();
 }
 
@@ -172,7 +176,7 @@ void Pomodoro::onRunning()
         p = (p % 3 + 3) % 3;
         _data.phase = (POMODORO::Phase_t)p;
         _data.run   = POMODORO::IDLE;
-        _data.hal->buzz.tone(4000, 25);
+        _data.hal->buzz.fxTick(detents > 0);
         _render();
     }
 
@@ -190,20 +194,20 @@ void Pomodoro::onRunning()
         {
             _data.remaining = _remaining_ms();
             _data.run       = POMODORO::PAUSED;
-            _data.hal->buzz.tone(5000, 30);
+            _data.hal->buzz.fxCancel();
         }
         else if (_data.run == POMODORO::PAUSED)
         {
             _data.end_ts = millis() + _data.remaining;
             _data.run    = POMODORO::RUNNING;
-            _data.hal->buzz.tone(8000, 30);
+            _data.hal->buzz.fxConfirm();
         }
         else   // IDLE
         {
             _data.duration_ms = _phase_duration(_data.phase);
             _data.end_ts      = millis() + _data.duration_ms;
             _data.run         = POMODORO::RUNNING;
-            _data.hal->buzz.tone(8000, 30);
+            _data.hal->buzz.fxConfirm();
         }
         _render();
     }
@@ -212,17 +216,20 @@ void Pomodoro::onRunning()
      * piezo's ~4 kHz resonance so the alert is as loud as possible. */
     if (_data.run == POMODORO::RUNNING && _remaining_ms() == 0)
     {
-        _data.hal->buzz.tone(4000, 170);
-        delay(190);
-        _data.hal->buzz.tone(4500, 170);
-        delay(190);
-        _data.hal->buzz.tone(4000, 240);
+        _data.hal->buzz.fxComplete();
         _advance();
         _render();
     }
 
     /* Live refresh */
     if (_data.run == POMODORO::RUNNING && millis() - _data.last_render >= 100)
+    {
+        _data.last_render = millis();
+        _render();
+    }
+
+    /* Keep the boot-in animating even while idle */
+    if (CYBER::booting(millis() - _data.boot_start) && millis() - _data.last_render >= 33)
     {
         _data.last_render = millis();
         _render();

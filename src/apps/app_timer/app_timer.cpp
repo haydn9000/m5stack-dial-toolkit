@@ -73,31 +73,31 @@ void Timer::_render()
     uint32_t s = total_s % 60;
 
     uint32_t accent;
-    const char* sub  = "";
+    const char* code = "";
     const char* hint = "";
 
     switch (_data.state)
     {
         case TIMER_APP::SETTING:
             accent = CYBER::AMBER;
-            sub  = "SET";
+            code = "SET";
             hint = "TURN = SET   PRESS = START";
             break;
         case TIMER_APP::RUNNING:
             accent = CYBER::CYAN;
-            sub  = "RUNNING";
+            code = "RUN";
             hint = "PRESS = PAUSE   HOLD = EXIT";
             break;
         case TIMER_APP::PAUSED:
             accent = CYBER::MAGENTA;
-            sub  = "PAUSED";
+            code = "PSE";
             hint = "PRESS = RESUME   TURN = RESET";
             break;
         case TIMER_APP::FINISHED:
         default:
             accent = ((millis() / 300) % 2) ? CYBER::RED
                                             : CYBER::blend(CYBER::RED, CYBER::BG, 0.3f);
-            sub  = "TIME!";
+            code = "END";
             hint = "PRESS = DISMISS   HOLD = EXIT";
             break;
     }
@@ -110,15 +110,19 @@ void Timer::_render()
     else
         ring = (float)r / (float)_data.duration_ms;
 
+    uint32_t bootMs = millis() - _data.boot_start;
+
     char big[12];
     snprintf(big, sizeof(big), "%02u:%02u", (unsigned)m, (unsigned)s);
 
-    CYBER::background(_data.hal->canvas, accent);
-    CYBER::progressRing(_data.hal->canvas, ring, accent);
-    CYBER::title(_data.hal->canvas, "TIMER", accent);
-    CYBER::subtitle(_data.hal->canvas, sub, accent);
-    CYBER::bigTime(_data.hal->canvas, big, CYBER::WHITE);
-    CYBER::hint(_data.hal->canvas, hint);
+    LGFX_Sprite* cv = _data.hal->canvas;
+    CYBER::hudChrome(cv, "TIMER", code, accent, bootMs);
+    CYBER::progressRing(cv, ring * CYBER::bootProgress(bootMs), accent);
+
+    char shown[12];
+    CYBER::scrambleTime(shown, big, bootMs);
+    CYBER::bigTime(cv, shown, CYBER::WHITE);
+    CYBER::hint(cv, hint);
     _canvas_update();
 }
 
@@ -137,7 +141,8 @@ void Timer::onSetup()
 void Timer::onCreate()
 {
     _log("onCreate");
-    _data.last_raw = _data.hal->encoder.getCount();
+    _data.last_raw   = _data.hal->encoder.getCount();
+    _data.boot_start = millis();
     _render();
 }
 
@@ -160,7 +165,7 @@ void Timer::onRunning()
         else if (_data.state == TIMER_APP::PAUSED)
         {
             _data.state = TIMER_APP::SETTING;
-            _data.hal->buzz.tone(4000, 25);
+            _data.hal->buzz.fxReset();
             _render();
         }
     }
@@ -183,18 +188,18 @@ void Timer::onRunning()
                     _data.duration_ms = (uint32_t)_data.set_seconds * 1000u;
                     _data.end_ts      = millis() + _data.duration_ms;
                     _data.state       = TIMER_APP::RUNNING;
-                    _data.hal->buzz.tone(8000, 30);
+                    _data.hal->buzz.fxConfirm();
                 }
                 break;
             case TIMER_APP::RUNNING:
                 _data.remaining = _remaining_ms();
                 _data.state     = TIMER_APP::PAUSED;
-                _data.hal->buzz.tone(5000, 30);
+                _data.hal->buzz.fxCancel();
                 break;
             case TIMER_APP::PAUSED:
                 _data.end_ts = millis() + _data.remaining;
                 _data.state  = TIMER_APP::RUNNING;
-                _data.hal->buzz.tone(8000, 30);
+                _data.hal->buzz.fxConfirm();
                 break;
             case TIMER_APP::FINISHED:
                 _data.hal->buzz.noTone();
@@ -215,15 +220,20 @@ void Timer::onRunning()
      * resonant frequency (~4 kHz, where it's loudest) so it carries. */
     if (_data.state == TIMER_APP::FINISHED && millis() >= _data.alarm_ts)
     {
-        _data.hal->buzz.tone(4000, 180);
-        delay(200);
-        _data.hal->buzz.tone(4500, 180);
+        _data.hal->buzz.fxAlarm();
         _data.alarm_ts = millis() + 450;
     }
 
     /* Live refresh */
     bool live = (_data.state == TIMER_APP::RUNNING || _data.state == TIMER_APP::FINISHED);
     if (live && millis() - _data.last_render >= 60)
+    {
+        _data.last_render = millis();
+        _render();
+    }
+
+    /* Keep the boot-in animating even while idle */
+    if (CYBER::booting(millis() - _data.boot_start) && millis() - _data.last_render >= 33)
     {
         _data.last_render = millis();
         _render();

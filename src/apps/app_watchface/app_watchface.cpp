@@ -154,8 +154,8 @@ static void wf_sweep_trail(LGFX_Sprite* c, float sec, uint32_t accent)
     for (int k = 0; k < slices; k++)
     {
         float fade = 1.0f - (float)k / slices;
-        float a    = 0.30f * fade * fade;
-        if (a < 0.05f) continue;           // drop the dark tail (no black wedge)
+        float a    = 0.30f * fade * fade;   // bright glow behind the head
+        if (a < 0.11f) continue;            // stop before it darkens — no black tail
         float a1 = ang_deg - trail * k / slices;
         float a0 = ang_deg - trail * (k + 1) / slices;
         c->fillArc(CX, CY, 2, 112, a0, a1, CYBER::blend(accent, CYBER::BG, a));
@@ -206,26 +206,30 @@ void Watchface::_render_time(float sec_float)
 
     /* Eyebrow: amber "TOP OF HOUR" pulse at :00, otherwise a quiet status. */
     if (_data.now.tm_min == 0)
-        wf_text(c, "- T O P   O F   H O U R -", 46, CYBER::AMBER);
+        wf_text(c, "- T O P   O F   H O U R -", 56, CYBER::AMBER);
     else
-        wf_text(c, "S Y S  -  O N L I N E", 46, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.85f));
+        wf_text(c, "S Y S  -  O N L I N E", 56, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.85f));
 
-    /* Centre HH:MM (Font7 + chromatic ghosts); colon blinks on the half-second. */
+    /* Centre HH:MM (Font7 + chromatic ghosts); colon blinks on the half-second.
+     * On open it scrambles into place (shared boot-in decrypt). */
+    uint32_t bootMs = millis() - _data.boot_start;
     char big[8];
     bool colon = (millis() - _data.sec_epoch) < 500;
     snprintf(big, sizeof(big), "%02d%c%02d",
              _data.now.tm_hour, colon ? ':' : ' ', _data.now.tm_min);
-    CYBER::bigTime(c, big, CYBER::WHITE);
+    char shown[8];
+    CYBER::scrambleTime(shown, big, bootMs);
+    CYBER::bigTime(c, shown, CYBER::WHITE, 1.7f);   // livelier glitch on the home face
 
     /* Weekday + date, then the quiet seconds numeral at the bottom. */
     char date[20];
     snprintf(date, sizeof(date), "%s   %02d %s",
              dow_name(_data.now.tm_wday), _data.now.tm_mday, mon_name(_data.now.tm_mon));
-    wf_text(c, date, 168, CYBER::blend(accent, CYBER::BG, 0.75f));
+    wf_text(c, date, 166, CYBER::blend(accent, CYBER::BG, 0.48f), 2);
 
     char secs[4];
     snprintf(secs, sizeof(secs), "%02d", _data.now.tm_sec);
-    wf_text(c, secs, 190, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.9f));
+    wf_text(c, secs, 190, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.9f), 2);
 
     _canvas_update();
 }
@@ -290,8 +294,9 @@ void Watchface::onCreate()
     _log("onCreate");
     _data.last_raw = _data.hal->encoder.getCount();
     _data.hal->rtc.getTime(_data.now);
-    _data.last_sec  = _data.now.tm_sec;
-    _data.sec_epoch = millis();
+    _data.last_sec   = _data.now.tm_sec;
+    _data.sec_epoch  = millis();
+    _data.boot_start = millis();
 }
 
 void Watchface::onRunning()

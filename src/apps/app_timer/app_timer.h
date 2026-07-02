@@ -27,6 +27,7 @@ namespace MOONCAKE
                 int64_t  last_raw    = 0;
                 uint32_t last_render = 0;
                 uint32_t alarm_ts    = 0;     // next alarm beep time
+                uint32_t boot_start  = 0;     // millis() at open, for the boot-in
             };
         }
 

@@ -61,8 +61,8 @@ void RFID_Test::_callback_get_rfid_card(const uint64_t& sn)
 {
     _log("Tag scanned (sn: %" PRIu64 ")", sn);
 
-    /* Bi */
-    _data.hal->buzz.tone(4000, 100);
+    /* Scan chirp */
+    _data.hal->buzz.fxScan();
 
     /* Updata page */
     _gui.renderPage(sn);

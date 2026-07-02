@@ -25,12 +25,10 @@ namespace MOONCAKE
             {
                 HAL::HAL* hal = nullptr;
                 
-                int16_t brightness = 128;
-                int delta_time = 0;
-                int brightness_increment;
-                uint32_t scroll_speed_time_count = 0;
+                int16_t pct = 50;             // brightness as a percentage 0..100
+                int64_t last_raw = 0;         // encoder baseline (half-quad raw counts)
 
-                LVGL::Anim_Path brightness_anim;
+                LVGL::Anim_Path brightness_anim;   // interpolates the mapped 0..255 backlight
             };
         }
 

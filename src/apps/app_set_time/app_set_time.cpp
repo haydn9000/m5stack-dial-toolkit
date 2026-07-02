@@ -120,7 +120,7 @@ void SetTime::_render()
     else if (_data.field == SET_TIME::F_DAY)  snprintf(big, sizeof(big), "%02d", _data.day);
     else if (_data.field == SET_TIME::F_HOUR) snprintf(big, sizeof(big), "%02d", _data.hour);
     else                                      snprintf(big, sizeof(big), "%02d", _data.min);
-    CYBER::bigTime(c, big, CYBER::WHITE);
+    CYBER::bigTime(c, big, CYBER::WHITE, 0.3f);   // calm glitch while editing
 
     /* Full preview so the field always has context. */
     char preview[24];
@@ -180,16 +180,14 @@ void SetTime::onRunning()
     if (btn == 2)          // hold = save & exit
     {
         _save();
-        _data.hal->buzz.tone(6000, 40);
-        delay(60);
-        _data.hal->buzz.tone(9000, 60);
+        _data.hal->buzz.fxConfirm();
         destroyApp();
         return;
     }
     if (btn == 1)          // short = next field
     {
         _data.field = (_data.field + 1) % SET_TIME::F_COUNT;
-        _data.hal->buzz.tone(7000, 25);
+        _data.hal->buzz.fxTick(true);
         _render();
     }
 

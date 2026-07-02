@@ -15,15 +15,15 @@
 
 namespace CYBER
 {
-    /* --- Cyberpunk 2077 palette: electric yellow + neon cyan + hot red on
-     *     near-black. The AMBER slot carries the signature CP2077 yellow. --- */
+    /* --- Neon cyberpunk palette: electric yellow + neon cyan + hot red on
+     *     near-black. The AMBER slot carries the signature electric yellow. --- */
     constexpr uint32_t BG       = 0x070B12;  // near-black, cool tint
     constexpr uint32_t SCANLINE = 0x0C1420;  // faint CRT scanline
     constexpr uint32_t TRACK    = 0x13293A;  // dim ring track
     constexpr uint32_t BORDER   = 0x1F4A5E;  // ring edge line
     constexpr uint32_t CYAN     = 0x00F0FF;  // electric cyan
     constexpr uint32_t MAGENTA  = 0xFF2A6D;  // hot pink-magenta
-    constexpr uint32_t AMBER    = 0xFCEE0A;  // CP2077 signature electric yellow
+    constexpr uint32_t AMBER    = 0xFCEE0A;  // signature electric yellow
     constexpr uint32_t GREEN    = 0x00FF9F;  // neon mint
     constexpr uint32_t RED      = 0xFF003C;  // alert red
     constexpr uint32_t WHITE    = 0xEAF6FF;  // cool off-white core
@@ -46,39 +46,37 @@ namespace CYBER
         return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
     }
 
-    /* Draw the HUD targeting frame: diagonal corner brackets, side telemetry
-     * rails and a neon outer rim — the cyberpunk "scope" overlay shared with
-     * the volume / brightness apps. */
+    /* Asymmetric HUD frame: a bold double bracket upper-left, a thin bracket
+     * lower-right and a short telemetry tick rail on the left, plus the neon
+     * outer rim. Everything sits inside the ring (r < 100) so it never collides
+     * with the gauge — a deliberately off-balance "terminal" frame. */
     inline void hudFrame(LGFX_Sprite* c, uint32_t accent)
     {
-        const uint32_t glow = blend(accent, BG, 0.45f);
+        const uint32_t bold  = blend(accent, BG, 0.85f);
+        const uint32_t mid   = blend(accent, BG, 0.5f);
+        const uint32_t faint = blend(accent, BG, 0.35f);
+        const uint32_t rail  = blend(DIMTEXT, BG, 0.9f);
 
-        /* Targeting brackets at the four diagonals (45/135/225/315 deg) */
-        const int r = 113, len = 15;
-        const float angs[4] = {45.0f, 135.0f, 225.0f, 315.0f};
-        for (int k = 0; k < 4; k++)
+        /* Bold double bracket, upper-left (2px) */
+        c->drawLine(40, 74, 40, 58, bold);  c->drawLine(41, 74, 41, 58, bold);
+        c->drawLine(40, 58, 66, 58, bold);  c->drawLine(40, 59, 66, 59, bold);
+        c->drawLine(44, 78, 44, 62, faint); c->drawLine(44, 62, 70, 62, faint);  // inner thin
+
+        /* Thin single bracket, lower-right */
+        c->drawLine(200, 166, 200, 182, mid);
+        c->drawLine(200, 182, 174, 182, mid);
+
+        /* Left telemetry tick rail + label */
+        for (int i = 0; i < 6; i++)
         {
-            float a  = angs[k] * 0.01745329f;
-            int bx = CX + (int)(r * cosf(a));
-            int by = CY + (int)(r * sinf(a));
-            float tx = -sinf(a), ty = cosf(a);           // tangential bracket
-            c->drawLine(bx - (int)(tx * len), by - (int)(ty * len),
-                        bx + (int)(tx * len), by + (int)(ty * len), accent);
-            c->drawLine(bx, by, CX + (int)((r - 9) * cosf(a)),
-                        CY + (int)((r - 9) * sinf(a)), glow);
+            int yy = 100 + i * 8;
+            c->drawFastHLine(30, yy, (i % 3 == 0) ? 9 : 5, rail);
         }
-
-        /* Side telemetry ticks on the left & right rails */
-        for (int i = 0; i < 5; i++)
-        {
-            int yy = 98 + i * 11;
-            c->drawFastHLine(15, yy, 6, glow);
-            c->drawFastHLine(219, yy, 6, glow);
-        }
-
-        /* Neon outer rim */
-        c->drawCircle(CX, CY, 119, accent);
-        c->drawCircle(CX, CY, 118, glow);
+        c->setFont(&fonts::Font0);
+        c->setTextSize(1);
+        c->setTextColor(rail);
+        c->setTextDatum(textdatum_t::middle_left);
+        c->drawString("SIG", 30, 90);
     }
 
     /* Draw the dark HUD background: gradient fill, CRT scanlines, ring track
@@ -93,61 +91,41 @@ namespace CYBER
         for (int y = 0; y < 240; y += 4)
             c->drawFastHLine(0, y, 240, SCANLINE);
 
-        /* Ring track + edge lines */
-        c->fillArc(CX, CY, R_OUT, R_IN, 0, 360, TRACK);
-        c->drawCircle(CX, CY, R_OUT, BORDER);
-        c->drawCircle(CX, CY, R_IN,  BORDER);
-
+        /* No solid ring track — the gauge pips float on black (matches the
+         * design prototype). The rim line is drawn by progressRing(). */
         hudFrame(c, accent);
     }
 
-    /* Draw the neon progress ring as a segmented gauge: lit segments sweep from
-     * the top (12 o'clock) clockwise for fraction p, with a glowing head. */
+    /* Segmented progress ring — 60 crisp pips floating on black, sweeping from
+     * the top (12 o'clock) clockwise for fraction p, bright white leading head,
+     * plus a faint rim line. Matches design/timeapp-hud.html. */
     inline void progressRing(LGFX_Sprite* c, float p, uint32_t col)
     {
         if (p < 0) p = 0;
         if (p > 1) p = 1;
 
-        const int   N      = 48;
-        const float radius = (R_OUT + R_IN) / 2.0f;
-        int active = (int)lroundf(p * N);
+        const int   N = 60;
+        const float R = 108.0f;
 
         for (int i = 0; i < N; i++)
         {
             float theta = (-90.0f + 360.0f * i / N) * 0.01745329f;  // top, CW
-            float cx = cosf(theta), sy = sinf(theta);
-            int x = CX + (int)(radius * cx);
-            int y = CY + (int)(radius * sy);
+            int x = CX + (int)(R * cosf(theta));
+            int y = CY + (int)(R * sinf(theta));
 
-            if (i < active)
+            float d = p * N - i;
+            if (d > 0.0f)
             {
-                /* Hot core brightens toward the leading head */
-                float t   = active > 1 ? (float)i / (active - 1) : 1.0f;
-                uint32_t lit = blend(WHITE, col, 0.20f + 0.55f * t);
-                c->fillCircle(x, y, 4, blend(col, BG, 0.55f));   // glow halo
-                c->fillCircle(x, y, 2, lit);                      // bright core
+                if (d < 1.0f)   c->fillSmoothCircle(x, y, 2, WHITE);            // head
+                else            c->fillCircle(x, y, 2, blend(col, BG, 0.9f));   // lit
             }
             else
             {
-                c->fillCircle(x, y, 1, blend(col, BG, 0.20f));   // unlit pip
+                c->fillCircle(x, y, 1, blend(BORDER, BG, 0.8f));               // unlit
             }
         }
 
-        /* Bright head marker at the leading segment */
-        if (active > 0)
-        {
-            int idx = active - 1;
-            float theta = (-90.0f + 360.0f * idx / N) * 0.01745329f;
-            int x = CX + (int)(radius * cosf(theta));
-            int y = CY + (int)(radius * sinf(theta));
-            c->fillSmoothCircle(x, y, 4, col);
-            c->fillSmoothCircle(x, y, 2, WHITE);
-        }
-        else
-        {
-            /* Start cap at the top when empty */
-            c->fillSmoothCircle(CX, CY - (int)radius, 3, blend(WHITE, BG, 0.6f));
-        }
+        c->drawCircle(CX, CY, 116, blend(col, BG, 0.5f));   // rim line
     }
 
     /* Title text near the top, inside the ring. */
@@ -170,19 +148,30 @@ namespace CYBER
         c->drawString(t, CX, 84);
     }
 
-    /* Big 7-segment time readout in the centre, with a cyan/magenta
-     * chromatic-aberration glow for the HUD look. */
-    inline void bigTime(LGFX_Sprite* c, const char* t, uint32_t col)
+    /* Big 7-segment time readout in the centre with a glitchy cyan/magenta
+     * chromatic-aberration shadow: a steady ±3 split that periodically tears
+     * wider and jitters vertically for a digital-glitch flicker. */
+    inline void bigTime(LGFX_Sprite* c, const char* t, uint32_t col, float glitch = 1.0f)
     {
         c->setFont(&fonts::Font7);
         c->setTextSize(1);
         c->setTextDatum(textdatum_t::middle_center);
 
-        /* Chromatic split: magenta to the right, cyan to the left */
-        c->setTextColor(blend(MAGENTA, BG, 0.55f));
-        c->drawString(t, CX + 2, 118);
-        c->setTextColor(blend(CYAN, BG, 0.55f));
-        c->drawString(t, CX - 2, 118);
+        /* Steady chromatic shadow, with an occasional brief horizontal shimmer.
+         * `glitch` scales it: 0 = steady only, 1 = default, >1 = livelier. */
+        uint32_t ph = millis();
+        int gx = 3;
+        if (glitch > 0.01f)
+        {
+            uint32_t window = (uint32_t)(70.0f * glitch);   // ms of shimmer per 3s
+            if ((ph % 3000u) < window)
+                gx = 4 + (int)((ph / 40u) % 2u);            // 4..5, momentary
+        }
+
+        c->setTextColor(blend(MAGENTA, BG, 0.62f));
+        c->drawString(t, CX + gx, 118);
+        c->setTextColor(blend(CYAN, BG, 0.62f));
+        c->drawString(t, CX - gx, 118);
         /* Bright core */
         c->setTextColor(col);
         c->drawString(t, CX, 118);
@@ -226,5 +215,97 @@ namespace CYBER
 
         c->drawString(a, CX, 184);
         c->drawString(p, CX, 200);
+    }
+
+    /* ---------------- redesigned HUD language (shared by the time apps) ------ */
+
+    /* Boot-in timing: one-shot "decrypt" that plays for BOOT_MS on app open. */
+    constexpr uint32_t BOOT_MS = 780;
+    inline float bootProgress(uint32_t bootMs) { return bootMs >= BOOT_MS ? 1.0f : (float)bootMs / BOOT_MS; }
+    inline bool  booting(uint32_t bootMs)      { return bootMs < BOOT_MS; }
+
+    /* Chamfered (cut-corner) rectangle outline — the CP-style tab edge. */
+    inline void chamferOutline(LGFX_Sprite* c, int x, int y, int w, int h, int cut, uint32_t col)
+    {
+        c->drawLine(x + cut, y,       x + w - cut, y,       col);   // top
+        c->drawLine(x + w - cut, y,   x + w, y + cut,       col);   // TR diag
+        c->drawLine(x + w, y + cut,   x + w, y + h - cut,   col);   // right
+        c->drawLine(x + w, y + h - cut, x + w - cut, y + h, col);   // BR diag
+        c->drawLine(x + w - cut, y + h, x + cut, y + h,     col);   // bottom
+        c->drawLine(x + cut, y + h,   x, y + h - cut,       col);   // BL diag
+        c->drawLine(x, y + h - cut,   x, y + cut,           col);   // left
+        c->drawLine(x, y + cut,       x + cut, y,           col);   // TL diag
+    }
+
+    /* Chamfered header tab, centred, with the screen name and a yellow highlight
+     * underline that grows with `frac` — the boot-in wipes it in. Matches the
+     * design/timeapp-hud.html header (x62,w116). */
+    inline void header(LGFX_Sprite* c, const char* name, uint32_t accent, float frac = 1.0f)
+    {
+        const int x = 62, y = 44, w = 116, h = 17, cut = 5;
+        c->fillRect(x + 1, y + 1, w - 2, h - 2, blend(accent, BG, 0.10f));
+        chamferOutline(c, x, y, w, h, cut, blend(accent, BG, 0.55f));
+        c->setFont(&fonts::Font0);
+        c->setTextSize(1);
+        c->setTextColor(blend(accent, BG, 0.95f));
+        c->setTextDatum(textdatum_t::middle_center);
+        c->drawString(name, CX, y + h / 2);
+        if (frac < 0) frac = 0;
+        if (frac > 1) frac = 1;
+        c->fillRect(x + 4, y + h - 1, (int)((w - 8) * frac), 2, AMBER);   // yellow highlight
+    }
+
+    /* Status chip (upper-right, tabbed onto the header) with a blinking dot.
+     * `code` is a short status like "RUN" / "PSE" / "END". */
+    inline void chip(LGFX_Sprite* c, const char* code, uint32_t accent)
+    {
+        const int x = 148, y = 58, w = 44, h = 16, cut = 4;
+        c->fillRect(x + 1, y + 1, w - 2, h - 2, blend(accent, BG, 0.12f));
+        chamferOutline(c, x, y, w, h, cut, blend(accent, BG, 0.6f));
+        bool on = ((millis() / 400) % 2) == 0;
+        c->fillCircle(x + 9, y + h / 2, 2, on ? accent : blend(accent, BG, 0.35f));
+        c->setFont(&fonts::Font0);
+        c->setTextSize(1);
+        c->setTextColor(blend(accent, BG, 0.9f));
+        c->setTextDatum(textdatum_t::middle_left);
+        c->drawString(code, x + 16, y + h / 2);
+    }
+
+    /* One-shot scanline sweep overlay for the boot-in (frac 0..1 -> top..bottom). */
+    inline void scanlineSweep(LGFX_Sprite* c, uint32_t accent, float frac)
+    {
+        int yy = (int)(frac * 240.0f);
+        for (int k = 0; k < 14; k++)
+            c->drawFastHLine(0, yy - k, 240, blend(accent, BG, 0.30f * (1.0f - k / 14.0f)));
+        c->drawFastHLine(0, yy, 240, blend(WHITE, BG, 0.5f));
+    }
+
+    /* Copy `real` into `dst`, replacing not-yet-locked digits with scrambling
+     * glyphs during the boot-in (locks left-to-right). dst must fit real+1. */
+    inline void scrambleTime(char* dst, const char* real, uint32_t bootMs)
+    {
+        int i = 0;
+        for (; real[i] != '\0'; i++)
+        {
+            char ch = real[i];
+            uint32_t lockAt = 120u + (uint32_t)i * 110u;
+            if (ch >= '0' && ch <= '9' && bootMs < lockAt)
+                dst[i] = (char)('0' + (int)(((millis() / 40) + i * 7) % 10));
+            else
+                dst[i] = ch;
+        }
+        dst[i] = '\0';
+    }
+
+    /* Full HUD chrome for a time app: dark ground + asym frame + header tab +
+     * status chip, plus the scanline sweep while booting. The caller then draws
+     * the ring (scaled by bootProgress) and readout. */
+    inline void hudChrome(LGFX_Sprite* c, const char* name, const char* code,
+                          uint32_t accent, uint32_t bootMs)
+    {
+        background(c, accent);
+        header(c, name, accent, bootProgress(bootMs));
+        chip(c, code, accent);
+        if (booting(bootMs)) scanlineSweep(c, accent, bootProgress(bootMs));
     }
 }

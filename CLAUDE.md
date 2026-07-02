@@ -72,7 +72,7 @@ src/
     ├── app_template/               # Blank template for new apps
     └── utilities/
         ├── smooth_menu/            # Animated menu library (Simple_Menu)
-        ├── cyber_ui/               # Shared cyberpunk HUD draw helpers for the time apps
+        ├── cyber_ui/               # Shared neon-cyberpunk HUD helpers for the time apps. Palette (CYAN/AMBER=yellow/MAGENTA/RED/GREEN on near-black BG) + hudChrome() (asymmetric hudFrame + chamfered header tab + status chip), progressRing (60 pips + rim, no track band), bigTime (Font7 + glitchy chromatic-aberration shadow; last arg is a per-app glitch amount: 0=steady, 1=default, >1=livelier), and a boot-in "decrypt" (scrambleTime + scanlineSweep + bootProgress, BOOT_MS). Prototype: design/timeapp-hud.html
         ├── gui_base/               # GUI_Base class with common drawing helpers
         ├── ble_demo/               # BLE demo interface + Arduino BLE implementation
         └── wifi_common_test/       # WiFi scan utility (esp_wifi API)
@@ -97,7 +97,7 @@ Close an app from within `onRunning()` by calling `destroyApp()`.
 - **Encoder**: Configured HALF-QUAD via `attachHalfQuad(41, 40)`, which yields **2 raw counts per physical detent**. The simple API (`hal->encoder.wasMoved(true)` + `hal->encoder.getDirection()`) is fine for menus, but for precise step control read raw counts with `hal->encoder.getCount()` directly and act only on whole detents (delta of ±2), consuming the delta in steps of 2. Reading `getCount()/2` truncates and causes phantom reverse ticks from contact bounce — avoid it. Increasing raw count = clockwise = "up". See `/memories/repo/m5dial-encoder.md`.
 - **Per-notch beep**: HAL installs a global `encoder._move_callback` that beeps on every detent. Apps that manage their own sounds (e.g. volume) suppress it by saving & nulling `_move_callback`/`_user_data` in `onCreate()` and restoring them in `onDestroy()`.
 - **Button**: `hal->encoder.btn.read()` returns `false` (LOW) when pressed. Typical pattern: `if (!hal->encoder.btn.read()) { while (!hal->encoder.btn.read()) delay(5); destroyApp(); }`
-- **Buzzer**: `hal->buzz.tone(frequency_hz, duration_ms)` — short beeps on encoder movement are wired up in HAL callbacks.
+- **Buzzer**: `hal->buzz.tone(frequency_hz, duration_ms)` is the raw wrapper. Prefer the cyberpunk SFX helpers in `hal_buzzer.hpp` — `fxTick` (encoder/field click, same both directions), `fxPress` (short button pip, used by the global press callback so it must stay short), `fxConfirm`/`fxCancel` (start-resume / pause-back), `fxReset`, `fxScan`, `fxAlarm` (loop for a siren), `fxComplete`, all built on `sweep(f0,f1,ms)`. These block for their sequence (small `delay()`s), so call them on discrete events, not every frame. HAL wires `fxTick` to the global encoder-move callback and `fxPress` to the button-press callback.
 - **Persistence (NVS)**: Use the Arduino `Preferences` library, namespace `"settings"`. Brightness is stored under key `"bright"` (restored during the boot splash in `hal.cpp`). Persist in `onDestroy()`.
 - **Logging**: Use `_log(fmt, ...)`, `_log_w(...)`, `_log_e(...)` macros (wrap `ESP_LOGI/W/E`). Tag is `_tag` (a `const char*` member set per class).
 - **Fonts**: `GUI_FONT_CN_BIG` = `&fonts::efontCN_24`, `GUI_FONT_CN_SMALL` = `&fonts::efontCN_16_b` (defined as build flags). The 7-segment readout uses `&fonts::Font7`.

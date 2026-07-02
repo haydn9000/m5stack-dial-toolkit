@@ -57,25 +57,33 @@ void Stopwatch::_render()
     uint32_t m  = (e / 60000) % 100;
 
     uint32_t accent;
+    const char* code;
     const char* hint;
-    if (_data.state == STOPWATCH::RUNNING) { accent = CYBER::CYAN;  hint = "PRESS = PAUSE"; }
-    else if (_data.state == STOPWATCH::PAUSED) { accent = CYBER::AMBER; hint = "TURN = RESET   HOLD = EXIT"; }
-    else { accent = CYBER::blend(CYBER::CYAN, CYBER::BG, 0.55f); hint = "PRESS = START   HOLD = EXIT"; }
+    if (_data.state == STOPWATCH::RUNNING) { accent = CYBER::CYAN;  code = "RUN"; hint = "PRESS = PAUSE"; }
+    else if (_data.state == STOPWATCH::PAUSED) { accent = CYBER::AMBER; code = "PSE"; hint = "TURN = RESET   HOLD = EXIT"; }
+    else { accent = CYBER::blend(CYBER::CYAN, CYBER::BG, 0.55f); code = "RDY"; hint = "PRESS = START   HOLD = EXIT"; }
 
     /* Ring sweeps once per minute like a second hand */
     float ring = (float)(e % 60000) / 60000.0f;
+
+    uint32_t bootMs = millis() - _data.boot_start;
 
     char big[12];
     char sub[8];
     snprintf(big, sizeof(big), "%02u:%02u", (unsigned)m, (unsigned)s);
     snprintf(sub, sizeof(sub), ".%02u", (unsigned)cs);
 
-    CYBER::background(_data.hal->canvas, accent);
-    CYBER::progressRing(_data.hal->canvas, ring, accent);
-    CYBER::title(_data.hal->canvas, "STOPWATCH", accent);
-    CYBER::bigTime(_data.hal->canvas, big, CYBER::WHITE);
-    CYBER::smallReadout(_data.hal->canvas, sub, accent);
-    CYBER::hint(_data.hal->canvas, hint);
+    LGFX_Sprite* cv = _data.hal->canvas;
+    CYBER::hudChrome(cv, "STOPWATCH", code, accent, bootMs);
+    CYBER::progressRing(cv, ring * CYBER::bootProgress(bootMs), accent);
+
+    char shown[12];
+    CYBER::scrambleTime(shown, big, bootMs);
+    CYBER::bigTime(cv, shown, CYBER::WHITE);
+
+    if (!CYBER::booting(bootMs))
+        CYBER::smallReadout(cv, sub, CYBER::AMBER);   // centiseconds = yellow highlight (default y=160)
+    CYBER::hint(cv, hint);
     _canvas_update();
 }
 
@@ -94,7 +102,8 @@ void Stopwatch::onSetup()
 void Stopwatch::onCreate()
 {
     _log("onCreate");
-    _data.last_raw = _data.hal->encoder.getCount();
+    _data.last_raw   = _data.hal->encoder.getCount();
+    _data.boot_start = millis();
     _render();
 }
 
@@ -108,9 +117,7 @@ void Stopwatch::onRunning()
         {
             _data.state       = STOPWATCH::STOPPED;
             _data.accumulated = 0;
-            _data.hal->buzz.tone(4000, 25);
-            delay(35);
-            _data.hal->buzz.tone(3000, 25);
+            _data.hal->buzz.fxReset();
             _render();
         }
     }
@@ -128,19 +135,26 @@ void Stopwatch::onRunning()
         {
             _data.accumulated += millis() - _data.start_ts;
             _data.state = STOPWATCH::PAUSED;
-            _data.hal->buzz.tone(5000, 30);
+            _data.hal->buzz.fxCancel();
         }
         else
         {
             _data.start_ts = millis();
             _data.state    = STOPWATCH::RUNNING;
-            _data.hal->buzz.tone(8000, 30);
+            _data.hal->buzz.fxConfirm();
         }
         _render();
     }
 
     /* Live update while running (~60fps centiseconds) */
     if (_data.state == STOPWATCH::RUNNING && millis() - _data.last_render >= 16)
+    {
+        _data.last_render = millis();
+        _render();
+    }
+
+    /* Keep the boot-in animating even while idle */
+    if (CYBER::booting(millis() - _data.boot_start) && millis() - _data.last_render >= 33)
     {
         _data.last_render = millis();
         _render();

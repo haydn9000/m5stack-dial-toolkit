@@ -38,6 +38,7 @@ namespace MOONCAKE
                 int      last_sec    = -1;   // last observed RTC second
                 uint32_t sec_epoch   = 0;    // millis() when last_sec began (for smooth sweep)
                 uint32_t last_render = 0;
+                uint32_t boot_start  = 0;    // millis() at open, for the boot-in decrypt
 
                 tm       now = {};           // most recent RTC read (zero-init: safe before first getTime)
             };
