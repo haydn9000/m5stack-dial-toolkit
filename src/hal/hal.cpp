@@ -14,6 +14,7 @@
 #include <esp_log.h>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
+#include <driver/rtc_io.h>
 #include <string.h>
 #include <cmath>
 #include <cstdio>
@@ -323,7 +324,21 @@ namespace HAL
          * off VBAT_IN either way. */
         delay(200);
 
+        /* Cut backlight power before sleeping — it's LEDC-driven and stays lit
+         * at whatever brightness was last set otherwise, defeating the point
+         * of sleeping to save power on external supply. */
+        display.setBrightness(0);
+
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, 0);   // wake when TP_INT goes low (touch)
+
+        /* Hold an RTC-domain pull-up on the wake pin during sleep. The touch
+         * controller already drives TP_INT normally-high (idle) / low (touch),
+         * so this is defense-in-depth, not a substitute for that drive — the
+         * digital GPIO_PULLUP_ONLY pull configured by the touch driver is
+         * powered down in deep sleep and ext0 wakeup does not enable one. */
+        rtc_gpio_pullup_en(GPIO_NUM_14);
+        rtc_gpio_pulldown_dis(GPIO_NUM_14);
+
         esp_deep_sleep_start();
     }
 
