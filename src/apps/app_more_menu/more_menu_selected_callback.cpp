@@ -125,11 +125,7 @@ void MoreMenu::_item_selected_callback(uint8_t selectedNum)
 
         delay(500);
 
-        _data.hal->powerOff();
-
-        
-        delay(4000);
-        _data.hal->powerOn();
+        _data.hal->powerOffOrSleep();
     }
 
 
