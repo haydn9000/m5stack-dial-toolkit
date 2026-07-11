@@ -66,6 +66,7 @@ namespace HAL
 
         void powerOn();
         void powerOff();
+        void powerOffOrSleep();
 
         static void _encoder_moved_callback(ESP32Encoder* encoder, void* userData);
         static void _encoder_button_pressed_callback(Button* button, void* userData);

@@ -12,6 +12,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <esp_log.h>
+#include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <string.h>
 #include <cmath>
@@ -309,6 +310,21 @@ namespace HAL
 
         /* Release power holding */
         gpio_set_level(pin_pwr_holding, 0);
+    }
+
+    void HAL::powerOffOrSleep()
+    {
+        powerOff();
+
+        /* If we're still executing, HOLD had no effect — external power
+         * (USB/DC) is present, since this board only honors HOLD=0 when
+         * running off battery alone. Give the (no-op) cutoff a moment to
+         * settle, then fall into deep sleep instead; the RTC keeps running
+         * off VBAT_IN either way. */
+        delay(200);
+
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, 0);   // wake when TP_INT goes low (touch)
+        esp_deep_sleep_start();
     }
 
     bool i2c_init(i2c_port_t i2cPort, int sda, int scl, uint32_t clkSpeed, bool pullUpEnable)
