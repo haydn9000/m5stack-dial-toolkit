@@ -36,6 +36,11 @@ pio device monitor
 
 Pin definitions are in `src/hal/hal_common_define.h`.
 
+**Power circuit notes** (confirmed against the official schematic and M5Stack's docs):
+- `HOLD` (GPIO46) only actually cuts board power when running off battery with no external USB/DC connected — pulling it low while powered externally has no effect; the system just keeps running. See `HAL::powerOffOrSleep()` below.
+- The RTC (PCF8563) draws power from the `VBAT_IN` rail — the same rail as the board's LiPo battery input (1.25mm-2P JST socket, 3.7V single-cell) — independent of the ESP32's own power/sleep state. No backup cell is fitted by default, so the RTC only keeps time across a full unplug if a LiPo is installed.
+- ESP32-S3 deep-sleep wake sources (`ext0`/`ext1`) are restricted to GPIO0-21. The physical WAKE/encoder button is GPIO42 — outside that range — so it **cannot** wake the chip from true deep sleep; only the touch interrupt pin (`HAL_PIN_TP_INT` = 14) can be used for that purpose on this board.
+
 ## Source Structure
 
 ```
@@ -57,7 +62,7 @@ src/
     ├── launcher/                   # Main launcher with circular icon menu
     ├── app_lcd_test/               # LCD test app
     ├── app_rtc_test/               # RTC clock display app
-    ├── app_watchface/              # Cyberpunk "SCOPE" watch face — main launcher home (index 0). Radar second-sweep + phosphor trail; turn=toggle date layer, press=back to time, hold=exit. Prototype: design/watchface-scope.html. RTC is seeded from build time on first boot (hal.cpp::_rtc_seed_if_unset).
+    ├── app_watchface/              # Cyberpunk "SCOPE" watch face — main launcher home (index 0). Radar second-sweep + phosphor trail; turn=toggle date layer, press=back to time, hold=exit. Prototype: design/watchface-scope.html. RTC is reseeded from the build timestamp whenever a new firmware build is flashed, or if its time is implausible (hal.cpp::_rtc_seed_if_needed) — a build-timestamp marker in NVS distinguishes "new build" from a normal reboot.
     ├── app_set_time/               # On-device RTC setter (turn=adjust field, press=next field, hold=save+exit); cyber-styled with Font7 value + field progress ring
     ├── app_rfid_test/              # RFID card scanner app
     ├── app_set_brightness/         # Brightness control app
@@ -98,7 +103,9 @@ Close an app from within `onRunning()` by calling `destroyApp()`.
 - **Per-notch beep**: HAL installs a global `encoder._move_callback` that beeps on every detent. Apps that manage their own sounds (e.g. volume) suppress it by saving & nulling `_move_callback`/`_user_data` in `onCreate()` and restoring them in `onDestroy()`.
 - **Button**: `hal->encoder.btn.read()` returns `false` (LOW) when pressed. Typical pattern: `if (!hal->encoder.btn.read()) { while (!hal->encoder.btn.read()) delay(5); destroyApp(); }`
 - **Buzzer**: `hal->buzz.tone(frequency_hz, duration_ms)` is the raw wrapper. Prefer the cyberpunk SFX helpers in `hal_buzzer.hpp` — `fxTick` (encoder/field click, same both directions), `fxPress` (short button pip, used by the global press callback so it must stay short), `fxConfirm`/`fxCancel` (start-resume / pause-back), `fxReset`, `fxScan`, `fxAlarm` (loop for a siren), `fxComplete`, all built on `sweep(f0,f1,ms)`. These block for their sequence (small `delay()`s), so call them on discrete events, not every frame. HAL wires `fxTick` to the global encoder-move callback and `fxPress` to the button-press callback.
-- **Persistence (NVS)**: Use the Arduino `Preferences` library, namespace `"settings"`. Brightness is stored under key `"bright"` (restored during the boot splash in `hal.cpp`). Persist in `onDestroy()`.
+- **Persistence (NVS)**: Use the Arduino `Preferences` library, namespace `"settings"`. Brightness is stored under key `"bright"` (restored during the boot splash in `hal.cpp`); the RTC reseed-detection build timestamp is stored under key `"build_ts"`. Persist in `onDestroy()` (or, for boot-time state like the RTC seed check, in `hal.cpp::_rtc_seed_if_needed()`).
+- **Power / Sleep**: `HAL::powerOffOrSleep()` (used by the More Menu's Power Off) calls the existing `powerOn()`/`powerOff()` HOLD-pin toggle (GPIO46) first. On this board `HOLD=0` only actually cuts power when running off battery with no external USB/DC connected — if execution continues past that call, that's proof external power is present, so it falls into ESP32 deep sleep instead (backlight off, `esp_sleep_enable_ext0_wakeup()` + `esp_deep_sleep_start()`), waking on a touchscreen tap (GPIO14/`TP_INT` — see the power circuit notes above for why the WAKE button can't be used here). Deep-sleep wake is a full reboot, not a resume. See `docs/superpowers/specs/2026-07-11-power-off-deep-sleep-design.md` for the full design/hardware reasoning.
+- **RTC I2C robustness**: `hal_rtc.hpp` uses a bounded I2C timeout (`pdMS_TO_TICKS(100)`, logged via `ESP_LOGW` on failure) rather than `portMAX_DELAY` for every transaction. The legacy ESP-IDF I2C driver can wedge after sustained high-frequency polling (the watchface reads the RTC at ~30fps), and with `portMAX_DELAY` that would hang the single-threaded main loop forever — don't reintroduce `portMAX_DELAY` here.
 - **Logging**: Use `_log(fmt, ...)`, `_log_w(...)`, `_log_e(...)` macros (wrap `ESP_LOGI/W/E`). Tag is `_tag` (a `const char*` member set per class).
 - **Fonts**: `GUI_FONT_CN_BIG` = `&fonts::efontCN_24`, `GUI_FONT_CN_SMALL` = `&fonts::efontCN_16_b` (defined as build flags). The 7-segment readout uses `&fonts::Font7`.
 - **`delay()`/`millis()`**: Provided by the Arduino framework — never redefine them.

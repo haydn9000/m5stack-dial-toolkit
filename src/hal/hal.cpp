@@ -235,26 +235,43 @@ namespace HAL
         return true;
     }
 
-    /* Seed the RTC from the build time if it has never been set (invalid
-     * year/month, e.g. a fresh device). No WiFi/serial needed — the PCF8563
-     * keeps time afterwards as long as it stays powered. A previously-set,
-     * plausible time is left untouched so reflashing doesn't reset the clock. */
-    static void _rtc_seed_if_unset(PCF8563::PCF8563& rtc)
+    /* Seed the RTC from the firmware's build time whenever a genuinely new
+     * build is flashed (detected via a build-timestamp marker persisted in
+     * NVS — flashing looks like any other reset from here, so this is the
+     * only way to tell "new build" apart from "normal reboot"), or if the
+     * RTC's current time is implausible (fresh device, or time lost after a
+     * full power loss with no backup battery). Reflashing the SAME build, or
+     * a normal reset/power-cycle, leaves the clock alone. */
+    static void _rtc_seed_if_needed(PCF8563::PCF8563& rtc)
     {
         rtc.init();   // ensure the oscillator is running (clears the STOP bit)
 
-        tm cur;
-        if (rtc.getTime(cur) == ESP_OK &&
-            cur.tm_year >= 2023 && cur.tm_mon >= 0 && cur.tm_mon <= 11)
-            return;
+        char build_ts[32];
+        snprintf(build_ts, sizeof(build_ts), "%s %s", __DATE__, __TIME__);
 
-        tm bt = {};
-        if (_build_time(bt))
+        Preferences prefs;
+        prefs.begin("settings", false);
+        bool new_build = prefs.getString("build_ts", "") != build_ts;
+
+        tm cur;
+        bool time_implausible = !(rtc.getTime(cur) == ESP_OK &&
+                                   cur.tm_year >= 2023 && cur.tm_mon >= 0 && cur.tm_mon <= 11);
+
+        if (new_build || time_implausible)
         {
-            rtc.setTime(bt);
-            ESP_LOGI(TAG, "RTC seeded from build time: %04d-%02d-%02d %02d:%02d:%02d",
-                     bt.tm_year, bt.tm_mon + 1, bt.tm_mday, bt.tm_hour, bt.tm_min, bt.tm_sec);
+            tm bt = {};
+            if (_build_time(bt))
+            {
+                rtc.setTime(bt);
+                ESP_LOGI(TAG, "RTC seeded from build time: %04d-%02d-%02d %02d:%02d:%02d",
+                         bt.tm_year, bt.tm_mon + 1, bt.tm_mday, bt.tm_hour, bt.tm_min, bt.tm_sec);
+            }
         }
+
+        if (new_build)
+            prefs.putString("build_ts", build_ts);
+
+        prefs.end();
     }
 
     void HAL::init()
@@ -271,7 +288,7 @@ namespace HAL
         i2c_init(I2C_NUM_0, HAL_PIN_TP_I2C_SDA, HAL_PIN_TP_I2C_SCL, 100000, true);
 
         /* Set the clock from build time on a fresh device (RTC shares I2C_NUM_0) */
-        _rtc_seed_if_unset(rtc);
+        _rtc_seed_if_needed(rtc);
 
         /* Display init */
         _display_init();

@@ -66,7 +66,13 @@ To use the **BLE Volume Controller**, open the app on the dial, then pair with `
 
 ### Keeping time
 
-On first boot the firmware seeds the RTC from the build timestamp, so the clock is roughly correct right after flashing; you can fine-tune it in **Set Time**. Note the M5Dial has **no RTC backup battery by default** — unplug it for more than a moment and the clock resets (re-seeding to build time on the next boot). To retain time while unplugged, add a battery to the on-board RTC backup socket, or keep the dial powered.
+Whenever you flash a genuinely new build, the firmware reseeds the RTC from that build's timestamp (tracked via a marker in NVS, so it can tell "new build" apart from a normal reboot) — it also reseeds if the RTC's current time is implausible, e.g. a brand-new device. A normal reset/power-cycle, or reflashing the exact same build, leaves the clock alone. You can fine-tune it any time in **Set Time**.
+
+The RTC (PCF8563) draws its power straight from the `VBAT_IN` rail — the same rail as the board's LiPo battery input — with **no separate backup cell fitted by default**, so unplugging external power drops that rail to 0V and the clock resets. To retain time while unplugged, plug a small 3.7V single-cell LiPo (JST-1.25 2-pin, matching the socket's polarity marking) into the Dial's onboard battery socket — the onboard charge circuit tops it off whenever USB/DC power is present, and at ~1.9µA sleep draw even a small cell lasts a long time just holding up the RTC.
+
+### Power Off
+
+The More Menu's **Power Off** adapts to however the Dial is powered. On battery, with no USB/DC connected, it genuinely cuts all power — wake it back up with the physical button. Left plugged into USB/DC (where software can't cut power on this board), it instead blanks the screen and drops into a low-power deep sleep; wake it by tapping the touchscreen.
 
 ## Project Structure
 

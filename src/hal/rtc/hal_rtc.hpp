@@ -11,17 +11,26 @@
 #pragma once
 #include <driver/i2c.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
 #include <ctime>
 
 
 /**
  * @brief Modify from "hal_tp.hpp"
- * 
+ *
  */
 namespace PCF8563 {
 
 
     static const char* TAG = "PCF8563";
+
+    /* Bounded wait for every I2C transaction. The legacy ESP-IDF i2c driver can
+     * leave its completion semaphore un-signaled after a rare bus glitch
+     * (arbitration loss, clock-stretch timeout); with portMAX_DELAY that wedges
+     * the caller forever. getTime() is polled at ~30fps by the watchface, so
+     * over an hour that's 100k+ transactions — enough to hit it. A bounded
+     * timeout turns a permanent freeze into a single skipped read. */
+    static const TickType_t I2C_TIMEOUT_TICKS = pdMS_TO_TICKS(100);
 
 
     struct Config_t {
@@ -42,14 +51,20 @@ namespace PCF8563 {
             inline esp_err_t _write_reg(uint8_t reg, uint8_t data)
             {
                 _data_buffer[0] = reg;
-                _data_buffer[1] = data; 
-                return i2c_master_write_to_device(_cfg.i2c_port, _cfg.dev_addr, _data_buffer, 2, portMAX_DELAY);
+                _data_buffer[1] = data;
+                esp_err_t res = i2c_master_write_to_device(_cfg.i2c_port, _cfg.dev_addr, _data_buffer, 2, I2C_TIMEOUT_TICKS);
+                if (res != ESP_OK)
+                    ESP_LOGW(TAG, "write reg 0x%02x failed: %d", reg, res);
+                return res;
             }
 
             inline esp_err_t _read_reg(uint8_t reg, uint8_t readSize)
             {
                 /* Store data into buffer */
-                return i2c_master_write_read_device(_cfg.i2c_port, _cfg.dev_addr, &reg, 1, _data_buffer, readSize, portMAX_DELAY);
+                esp_err_t res = i2c_master_write_read_device(_cfg.i2c_port, _cfg.dev_addr, &reg, 1, _data_buffer, readSize, I2C_TIMEOUT_TICKS);
+                if (res != ESP_OK)
+                    ESP_LOGW(TAG, "read reg 0x%02x failed: %d", reg, res);
+                return res;
             }
 
             inline uint8_t bcd2dec(uint8_t val)
@@ -151,8 +166,11 @@ namespace PCF8563 {
                 _data_buffer[5] = dec2bcd(time.tm_wday);		        // tm_wday is 0 to 6
                 _data_buffer[6] = dec2bcd(time.tm_mon + 1);	            // tm_mon is 0 to 11
                 _data_buffer[7] = dec2bcd(time.tm_year - 2000);
-                    
-                return i2c_master_write_to_device(_cfg.i2c_port, _cfg.dev_addr, _data_buffer, 8, portMAX_DELAY);
+
+                esp_err_t res = i2c_master_write_to_device(_cfg.i2c_port, _cfg.dev_addr, _data_buffer, 8, I2C_TIMEOUT_TICKS);
+                if (res != ESP_OK)
+                    ESP_LOGW(TAG, "setTime failed: %d", res);
+                return res;
             }
 
 
@@ -237,7 +255,7 @@ namespace PCF8563 {
                 _data_buffer[3] = 0x80;
                 _data_buffer[4] = 0x80;
 
-                i2c_master_write_to_device(_cfg.i2c_port, _cfg.dev_addr, _data_buffer, 5, portMAX_DELAY);
+                i2c_master_write_to_device(_cfg.i2c_port, _cfg.dev_addr, _data_buffer, 5, I2C_TIMEOUT_TICKS);
 
 
 
