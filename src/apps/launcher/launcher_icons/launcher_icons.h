@@ -21,3 +21,5 @@
 #include "icon_stopwatch.h"
 #include "icon_timer.h"
 #include "icon_pomodoro.h"
+#include "icon_claude.h"
+#include "icon_pcstats.h"

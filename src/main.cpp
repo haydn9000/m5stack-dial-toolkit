@@ -7,6 +7,7 @@
 #include "hal/hal.h"
 #include "apps/app.h"
 #include "apps/launcher/launcher.h"
+#include "apps/utilities/pc_link/pc_link.h"
 
 static HAL::HAL hal;
 
@@ -14,6 +15,9 @@ void setup()
 {
     /* Hardware init */
     hal.init();
+
+    /* PC Stats / Claude Usage data channel (BLE + USB serial) */
+    PC_LINK::init();
 }
 
 void loop()

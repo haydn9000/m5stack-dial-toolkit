@@ -26,7 +26,7 @@
 #define ICON_TAG_UP_OFFSET          -24
 #define ICON_TAG_DOWN_OFFSET        0
 
-#define ICON_NUM                    7
+#define ICON_NUM                    9
 
 
 /* Strucut to hold icon value */
@@ -45,13 +45,15 @@ static std::array<Icon_t, ICON_NUM> icon_list;
 /* Icon color */
 /* Neon cyberpunk ring: electric cyan / yellow / hot red spread across icons */
 static std::array<uint32_t, ICON_NUM> icon_color_list = {
-    0x00F0FF,  // Watch Face - electric cyan (home / default landing app)
-    0xFF2A6D,  // BLE Volume - hot pink-magenta
-    0xFCEE0A,  // Timer      - signature yellow
-    0x00FF9F,  // Stopwatch  - neon mint
-    0xFF003C,  // Pomodoro   - alert red
-    0xFF9E00,  // Brightness - warm amber
-    0x3A6B8C   // More       - steel blue
+    0x00F0FF,  // Watch Face   - electric cyan (home / default landing app)
+    0xFF2A6D,  // BLE Volume   - hot pink-magenta
+    0xFCEE0A,  // Timer        - signature yellow
+    0x00FF9F,  // Stopwatch    - neon mint
+    0xFF003C,  // Pomodoro     - alert red
+    0xFF9E00,  // Brightness   - warm amber
+    0xD97757,  // Claude Usage - coral
+    0x00F0FF,  // PC Stats     - electric cyan
+    0x3A6B8C   // More         - steel blue
 };
 /* Icon tag */
 static std::array<std::string, ICON_NUM * 2> icon_tag_list = {
@@ -61,6 +63,8 @@ static std::array<std::string, ICON_NUM * 2> icon_tag_list = {
     "STOPWATCH", "",
     "POMODORO", "",
     "BRIGHTNESS", "SET",
+    "CLAUDE", "USAGE",
+    "PC", "STATS",
     "MORE", ""
 };
 /* Icon pic */
@@ -71,6 +75,8 @@ static std::array<const uint16_t*, ICON_NUM> icon_pic_list = {
     image_data_icon_stopwatch,
     image_data_icon_pomodoro,
     image_data_icon_brigntness,
+    image_data_icon_claude,
+    image_data_icon_pcstats,
     image_data_icon_more
 };
 /* Sprite to render icon with transparency */

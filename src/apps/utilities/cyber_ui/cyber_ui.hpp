@@ -28,6 +28,9 @@ namespace CYBER
     constexpr uint32_t RED      = 0xFF003C;  // alert red
     constexpr uint32_t WHITE    = 0xEAF6FF;  // cool off-white core
     constexpr uint32_t DIMTEXT  = 0x4E6B7C;
+    constexpr uint32_t SLATE    = 0x8FB0C2;  // legible secondary text — brighter than DIMTEXT;
+                                              // use for labels/readouts that must stay readable,
+                                              // not just decorative dimming
 
     /* Geometry of the progress ring on the round display */
     constexpr int CX    = 120;
@@ -126,6 +129,42 @@ namespace CYBER
         }
 
         c->drawCircle(CX, CY, 116, blend(col, BG, 0.5f));   // rim line
+    }
+
+    /* Generalized version of progressRing() — arbitrary center/radius, so
+     * callers can draw multiple gauges of different sizes on one canvas
+     * (e.g. the Claude Usage app's concentric rings, or PC Stats' clustered
+     * small gauges). Pip count auto-scales with radius (~7px between pips)
+     * so smaller rings don't look sparse. progressRing() itself is left
+     * untouched — it has a different fixed pip count (60) that Timer/
+     * Stopwatch/Pomodoro's existing look depends on. */
+    inline void progressRingAt(LGFX_Sprite* c, int cx, int cy, int radius, float p, uint32_t col)
+    {
+        if (p < 0) p = 0;
+        if (p > 1) p = 1;
+
+        int N = (int)(2.0f * 3.14159265f * radius / 7.0f);
+        if (N < 16) N = 16;
+
+        for (int i = 0; i < N; i++)
+        {
+            float theta = (-90.0f + 360.0f * i / N) * 0.01745329f;
+            int x = cx + (int)(radius * cosf(theta));
+            int y = cy + (int)(radius * sinf(theta));
+
+            float d = p * N - i;
+            if (d > 0.0f)
+            {
+                if (d < 1.0f)   c->fillSmoothCircle(x, y, 2, WHITE);
+                else            c->fillCircle(x, y, 2, blend(col, BG, 0.9f));
+            }
+            else
+            {
+                c->fillCircle(x, y, 1, blend(BORDER, BG, 0.8f));
+            }
+        }
+
+        c->drawCircle(cx, cy, radius + 4, blend(col, BG, 0.5f));
     }
 
     /* Title text near the top, inside the ring. */
@@ -308,4 +347,5 @@ namespace CYBER
         chip(c, code, accent);
         if (booting(bootMs)) scanlineSweep(c, accent, bootProgress(bootMs));
     }
+
 }

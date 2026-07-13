@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M5Dial — Claude Usage HUD concept</title>
+<style>
+  :root{
+    --bg:#070b12; --cyan:#00f0ff; --yellow:#fcee0a; --magenta:#ff2a6d;
+    --red:#ff003c; --green:#00ff9f; --white:#eaf6ff; --dim:#4e6b7c; --slate:#8fb0c2;
+    --coral:#d97757;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(120% 120% at 50% 0%, #0d1522 0%, #070b12 46%, #02040a 100%);
+    color:var(--white); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; gap:26px; padding:40px 16px; -webkit-font-smoothing:antialiased;
+  }
+  .dial{
+    --size:420px; width:var(--size); height:var(--size); border-radius:50%; padding:18px;
+    background:radial-gradient(60% 60% at 38% 30%, #23262b 0%, #14161a 40%, #0a0b0e 72%, #050608 100%);
+    box-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 -14px 34px rgba(0,0,0,.6) inset,
+      0 30px 70px -20px rgba(0,0,0,.85), 0 4px 14px rgba(0,0,0,.6); position:relative;
+  }
+  .dial::after{content:""; position:absolute; inset:9px; border-radius:50%;
+    border:1px solid rgba(120,140,160,.10); box-shadow:0 0 0 1px rgba(0,0,0,.6) inset; pointer-events:none;}
+  .glass{width:100%; height:100%; border-radius:50%; overflow:hidden; position:relative;
+    box-shadow:0 0 40px -8px rgba(217,119,87,.22);}
+  canvas{display:block; width:100%; height:100%; border-radius:50%}
+  .glass::after{content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:radial-gradient(90% 60% at 32% 14%, rgba(255,255,255,.07), rgba(255,255,255,0) 42%);}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; max-width:420px}
+  button{
+    font:inherit; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--coral); background:#1a0f0a; border:1px solid #4a2c1e; border-radius:2px;
+    padding:8px 12px; cursor:pointer; transition:border-color .15s, color .15s, background .15s;
+  }
+  button:hover{border-color:var(--coral)}
+  button.active{background:var(--coral); color:#1a0f0a; border-color:var(--coral)}
+  button.warn{color:var(--yellow); border-color:#4a4210}
+  button.bad{color:var(--red); border-color:#4a1020}
+  .hint{color:var(--dim); font-size:11px; letter-spacing:.2em; text-transform:uppercase; text-align:center}
+</style>
+</head>
+<body>
+  <div class="dial"><div class="glass"><canvas id="c"></canvas></div></div>
+  <div class="row">
+    <button id="allowedBtn" class="active">Allowed</button>
+    <button id="limitedBtn" class="warn">Limited</button>
+    <button id="rejectedBtn" class="bad">Rejected</button>
+    <button id="noDataBtn">No data</button>
+    <button id="bootBtn">Replay boot</button>
+  </div>
+  <div class="row">
+    <button id="sessDown">Session −10</button>
+    <button id="sessUp">Session +10</button>
+    <button id="weekDown">Weekly −10</button>
+    <button id="weekUp">Weekly +10</button>
+  </div>
+  <div class="hint">prototype v4 · the gauge is the whole screen; title/weekly text curves around its rim</div>
+
+<script>
+(() => {
+  const C = { bg:'#070b12', cyan:'#00f0ff', yellow:'#fcee0a', magenta:'#ff2a6d',
+    red:'#ff003c', green:'#00ff9f', white:'#eaf6ff', dim:'#4e6b7c', slate:'#8fb0c2',
+    track:'#13293a', border:'#1f4a5e', scan:'#0c1420', coral:'#d97757' };
+  const D2R=Math.PI/180;
+  const canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function size(){
+    const dpr=Math.min(devicePixelRatio||1,3), w=canvas.clientWidth||420;
+    canvas.width=Math.round(w*dpr); canvas.height=Math.round(w*dpr);
+    ctx.setTransform(canvas.width/240,0,0,canvas.width/240,0,0);
+  }
+  new ResizeObserver(size).observe(canvas); size();
+
+  /* Accepts both '#rrggbb' and 'rgb(r,g,b)' / 'rgba(...)' strings, so
+     blend()'s output can safely be piped back into rgba() — that mismatch
+     is what crashed the PC Stats build (NaN colour -> addColorStop throw). */
+  function hx(h){
+    if(h[0]==='#') return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+    const m=h.match(/[\d.]+/g).map(Number);
+    return [m[0],m[1],m[2]];
+  }
+  function blend(f,b,a){const F=hx(f),B=hx(b);return `rgb(${F[0]*a+B[0]*(1-a)|0},${F[1]*a+B[1]*(1-a)|0},${F[2]*a+B[2]*(1-a)|0})`;}
+  const rgba=(h,a)=>{const c=hx(h);return `rgba(${c[0]},${c[1]},${c[2]},${a})`;};
+
+  /* ---- the gauge now fills the whole screen: a thin rim near the very
+     edge (r=103) instead of a medium-sized ring eating into the middle.
+     That paradoxically frees up MORE centre space, not less — the interior
+     is a clear disc up to ~r90 with nothing on it. Title + weekly text
+     curve around the rim's own inside edge (r=80) instead of sitting in a
+     straight band, which is what lets them fit without straying into the
+     ring or getting clipped by the round bezel. Everything else (status
+     pill, big number, CURRENT label, reset line) stacks in the centre
+     column, comfortably inside r<=65 of centre. ---- */
+  const CX=120, CY=120, RING_R=103;
+  const ARC_R=88;
+
+  let sessionPct=45, weeklyPct=67, status='allowed', haveData=true;
+  let bootStart=performance.now();
+  const sessionResetStr = () => 'RESETS 3:50PM EDT';
+
+  function setActive(id){
+    ['allowedBtn','limitedBtn','rejectedBtn'].forEach(x=>document.getElementById(x).classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+  document.getElementById('allowedBtn').onclick=()=>{status='allowed'; setActive('allowedBtn');};
+  document.getElementById('limitedBtn').onclick=()=>{status='limited'; setActive('limitedBtn');};
+  document.getElementById('rejectedBtn').onclick=()=>{status='rejected'; setActive('rejectedBtn');};
+  document.getElementById('noDataBtn').onclick=e=>{haveData=!haveData; e.target.classList.toggle('active',!haveData);};
+  document.getElementById('bootBtn').onclick=()=>{ bootStart=performance.now(); };
+  document.getElementById('sessUp').onclick=()=>{sessionPct=Math.min(100,sessionPct+10);};
+  document.getElementById('sessDown').onclick=()=>{sessionPct=Math.max(0,sessionPct-10);};
+  document.getElementById('weekUp').onclick=()=>{weeklyPct=Math.min(100,weeklyPct+10);};
+  document.getElementById('weekDown').onclick=()=>{weeklyPct=Math.max(0,weeklyPct-10);};
+
+  /* Accent bleeds coral -> red as the session gauge nears its cap — a
+     consumption meter should visibly tighten, unlike a neutral countdown. */
+  function sessionAccent(p){
+    if (p < 80) return C.coral;
+    return blend(C.red, C.coral, Math.min(1,(p-80)/20));
+  }
+  const weeklyAccent = () => blend(C.green, C.coral, 0.5);
+
+  function roundRect(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function background(a){
+    const g=ctx.createLinearGradient(0,0,0,240);
+    g.addColorStop(0,blend(a,C.bg,0.10)); g.addColorStop(1,C.bg);
+    ctx.fillStyle=g; ctx.fillRect(0,0,240,240);
+    ctx.fillStyle=C.scan; for(let y=0;y<240;y+=4) ctx.fillRect(0,y,240,1);
+  }
+
+  /* Claude's own six-point asterisk (matches the launcher icon). Built as a
+     single path + one stroke() call so the six overlapping rays don't stack
+     alpha at the centre crossing point. */
+  function asteriskMark(x,y,r,col,lw){
+    ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.lineCap='round';
+    ctx.beginPath();
+    for(let i=0;i<6;i++){
+      const th=i*60*D2R;
+      ctx.moveTo(x-r*Math.cos(th),y-r*Math.sin(th));
+      ctx.lineTo(x+r*Math.cos(th),y+r*Math.sin(th));
+    }
+    ctx.stroke();
+  }
+
+  /* Text set along an arc, one character per angular step, each rotated to
+     stay tangent to the circle. `outward` picks which side of the baseline
+     the letters' "up" points toward: true = away from centre (reads
+     correctly for text curving along the TOP of the ring), false = toward
+     centre (reads correctly along the BOTTOM — the classic coin-inscription
+     flip so bottom text doesn't render upside down). Sweep from `fromDeg`
+     to `toDeg` in the order you want it read; for the bottom arc that means
+     passing a LARGER angle first (sweeping right-to-left in raw angle terms
+     still reads left-to-right once the flip is applied). */
+  function arcText(str, cx, cy, radius, fromDeg, toDeg, col, px){
+    const outward = fromDeg < toDeg;
+    ctx.save();
+    ctx.fillStyle=col;
+    ctx.font=`bold ${px}px ui-monospace, monospace`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const n=str.length;
+    for(let i=0;i<n;i++){
+      const deg = n===1 ? fromDeg : fromDeg + (toDeg-fromDeg)*i/(n-1);
+      const rad = deg*D2R;
+      const x=cx+radius*Math.cos(rad), y=cy+radius*Math.sin(rad);
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.rotate(rad + (outward ? Math.PI/2 : -Math.PI/2));
+      ctx.fillText(str[i],0,0);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /* Hero reactor gauge: dim full-scale track + graduation ticks so the
+     scale reads at a glance, then a thick glowing arc fill with a bright
+     spark at the leading edge. */
+  function reactorRing(p, a, wipe){
+    const frac = Math.max(0,Math.min(1,p))*wipe;
+
+    ctx.strokeStyle=rgba(C.border,.7); ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(CX,CY,RING_R,0,7); ctx.stroke();
+
+    ctx.strokeStyle=rgba(C.slate,.5); ctx.lineWidth=2;
+    for(let i=0;i<4;i++){
+      const th=(-90+90*i)*D2R;
+      const x1=CX+(RING_R-7)*Math.cos(th), y1=CY+(RING_R-7)*Math.sin(th);
+      const x2=CX+(RING_R+7)*Math.cos(th), y2=CY+(RING_R+7)*Math.sin(th);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    }
+
+    if(frac>0.002){
+      ctx.save();
+      ctx.shadowColor=a; ctx.shadowBlur=9;
+      ctx.strokeStyle=a; ctx.lineWidth=13; ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.arc(CX,CY,RING_R,-90*D2R,(-90+360*frac)*D2R);
+      ctx.stroke();
+      ctx.restore();
+
+      const endTh=(-90+360*frac)*D2R;
+      const ex=CX+RING_R*Math.cos(endTh), ey=CY+RING_R*Math.sin(endTh);
+      ctx.save();
+      ctx.shadowColor=C.white; ctx.shadowBlur=6;
+      ctx.fillStyle=C.white;
+      ctx.beginPath(); ctx.arc(ex,ey,5,0,7); ctx.fill();
+      ctx.restore();
+      asteriskMark(ex,ey,6,rgba(C.white,.95),1.6);
+    }
+  }
+
+  /* Status is secondary to the hero number in every state — allowed,
+     limited, and rejected all get the same small quiet outline badge so
+     none of them compete with the number for attention. Urgency still
+     reads through colour (and, for session usage, the ring's own
+     coral -> red bleed) without needing a loud solid fill. */
+  function pill(cx,y,label,accent){
+    ctx.font='10px ui-monospace, monospace';
+    const tw=ctx.measureText(label).width;
+    const w=tw+22, h=16, x=cx-w/2;
+    ctx.strokeStyle=rgba(accent,.55); ctx.lineWidth=1; roundRect(x,y,w,h,h/2); ctx.stroke();
+    ctx.fillStyle=rgba(accent,.7);
+    ctx.beginPath(); ctx.arc(x+11,y+h/2,2,0,7); ctx.fill();
+    ctx.fillStyle=blend(accent,C.white,.15);
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(label, x+18, y+h/2+0.5);
+  }
+
+  const SEG={a:[.14,0,.72,'h'],b:[.86,.06,.44,'v'],c:[.86,.52,.44,'v'],d:[.14,.96,.72,'h'],
+    e:[0,.52,.44,'v'],f:[0,.06,.44,'v'],g:[.14,.48,.72,'h']};
+  const ON={'0':'abcdef','1':'bc','2':'abged','3':'abgcd','4':'fgbc','5':'afgcd','6':'afgedc','7':'abc','8':'abcdefg','9':'abcfgd'};
+  function segPath(s,x,y,w,h,t){const[fx,fy,fl,d]=s;
+    if(d==='h'){const sx=x+fx*w,sy=y+fy*h,l=fl*w;ctx.beginPath();ctx.moveTo(sx+t/2,sy-t/2);ctx.lineTo(sx+l-t/2,sy-t/2);ctx.lineTo(sx+l,sy);ctx.lineTo(sx+l-t/2,sy+t/2);ctx.lineTo(sx+t/2,sy+t/2);ctx.lineTo(sx,sy);ctx.closePath();}
+    else{const sx=x+fx*w,sy=y+fy*h,l=fl*h;ctx.beginPath();ctx.moveTo(sx-t/2,sy+t/2);ctx.lineTo(sx-t/2,sy+l-t/2);ctx.lineTo(sx,sy+l);ctx.lineTo(sx+t/2,sy+l-t/2);ctx.lineTo(sx+t/2,sy+t/2);ctx.lineTo(sx,sy);ctx.closePath();}}
+  function digit(ch,x,y,w,h,col,dim){const t=Math.min(w,h)*.18;const on=ON[ch]||'';
+    for(const k in SEG){ctx.fillStyle=on.includes(k)?col:rgba(dim||C.cyan,.06);segPath(SEG[k],x,y,w,h,t);ctx.fill();}}
+
+  /* Big 2-digit session percentage — much larger now that the gauge moved
+     out to the rim and freed the whole centre for it. */
+  function bigPct(chars, col){
+    const dw=46,dh=74,gap=12;
+    const total=dw*2+gap, x0=CX-total/2, y=CY-dh/2-4;
+    ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=8;
+    const draw=(dx,c)=>{let x=x0+dx;
+      digit(chars[0],x,y,dw,dh,c); x+=dw+gap; digit(chars[1],x,y,dw,dh,c);};
+    draw(1.6,blend(C.magenta,C.bg,.45)); draw(-1.6,blend(C.cyan,C.bg,.45)); draw(0,col);
+    ctx.restore();
+  }
+
+  function text(t,x,y,col,px,align,weight){
+    ctx.fillStyle=col; ctx.textAlign=align||'center'; ctx.textBaseline='middle';
+    ctx.font=`${weight||''} ${px}px ui-monospace, "SF Mono", monospace`;
+    ctx.fillText(t,x,y);
+  }
+
+  function noDataPanel(a, t){
+    /* Panel top must clear the title arc's own footprint — its outer
+       characters ("C"/"E" at the ends of the sweep) dip down to about
+       y=70 at this radius, so starting the panel at y=64 (the old value)
+       clipped straight through them. */
+    const x=24,y=78,w=192,h=104;
+    ctx.fillStyle=rgba(C.bg,.4);
+    roundRect(x,y,w,h,10); ctx.fill();
+    ctx.strokeStyle=rgba(a,.45); ctx.lineWidth=1.4; roundRect(x,y,w,h,10); ctx.stroke();
+
+    const pulse = 0.8+0.2*Math.sin(t/500);
+    asteriskMark(120,100,14*pulse,rgba(a,.85),2);
+
+    text('AWAITING DATA', 120, 122, C.white, 13, 'center', 'bold');
+    text('BLE   M5DIAL-001', 120, 142, C.slate, 10.5);
+    text('USB   claude_sender.py <port>', 120, 158, C.slate, 10.5);
+    text('ADDR  3C:8A:1F:9B:2E:04', 120, 174, rgba(C.slate,.8), 10);
+  }
+
+  function bootInfo(){
+    const el=(performance.now()-bootStart);
+    const DUR=reduce?0:820;
+    return { on: el<DUR, el, dur:DUR };
+  }
+
+  function frameLoop(now){
+    const a = sessionAccent(sessionPct);
+    const boot=bootInfo();
+
+    background(a);
+
+    if(!haveData){
+      arcText('CLAUDE USAGE', CX, CY, ARC_R, -145, -35, blend(a,C.white,.35), 10.5);
+      noDataPanel(a, now);
+      requestAnimationFrame(frameLoop);
+      return;
+    }
+
+    const wipe = boot.on ? Math.min(1, boot.el/boot.dur) : 1;
+
+    reactorRing(sessionPct/100, a, wipe);
+
+    arcText('CLAUDE USAGE', CX, CY, ARC_R, -145, -35, blend(a,C.white,.35), 10.5);
+    arcText(`WEEKLY ${Math.round(weeklyPct*wipe)}%`, CX, CY, ARC_R, 145, 35, weeklyAccent(), 10.5);
+
+    const label = status==='allowed'?'ALLOWED':(status==='limited'?'LIMITED':'REJECTED');
+    const pillFill = status==='allowed'?C.green:(status==='limited'?C.yellow:C.red);
+    pill(CX, 48, label, pillFill);
+
+    let sessDigits=[String(Math.floor(sessionPct/10)),String(sessionPct%10)];
+    if(boot.on){
+      const lockAt=[180,360];
+      sessDigits=sessDigits.map((c,i)=> boot.el>lockAt[i]?c:String(Math.floor(Math.random()*10)));
+    }
+    bigPct(sessDigits, boot.on?blend(C.white,a,.3):C.white);
+
+    if(!boot.on){
+      text('CURRENT', CX, 167, blend(a,C.white,.3), 12, 'center', 'bold');
+      text(sessionResetStr(), CX, 183, C.slate, 9.5);
+    }
+
+    if(boot.on){
+      const yy=(boot.el/boot.dur)*240;
+      const grd=ctx.createLinearGradient(0,yy-16,0,yy+2);
+      grd.addColorStop(0,rgba(a,0)); grd.addColorStop(1,rgba(a,.35));
+      ctx.fillStyle=grd; ctx.fillRect(0,yy-16,240,18);
+      ctx.fillStyle=rgba(C.white,.5); ctx.fillRect(0,yy,240,1);
+    }
+
+    requestAnimationFrame(frameLoop);
+  }
+  requestAnimationFrame(frameLoop);
+})();
+</script>
+</body>
+</html>

@@ -9,3 +9,7 @@
 
 # Windows
 Thumbs.db
+
+# Superpowers scratch state (brainstorm mockups, subagent-driven-dev ledger/briefs)
+.superpowers/
+__pycache__/

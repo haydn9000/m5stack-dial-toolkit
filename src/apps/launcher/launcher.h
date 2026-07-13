@@ -28,6 +28,8 @@
 #include "../app_timer/app_timer.h"
 #include "../app_stopwatch/app_stopwatch.h"
 #include "../app_watchface/app_watchface.h"
+#include "../app_claude_usage/app_claude_usage.h"
+#include "../app_pc_stats/app_pc_stats.h"
 
 
 

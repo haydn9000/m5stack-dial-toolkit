@@ -193,7 +193,7 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
 
     /* Special color for app more menu (now the last icon) */
     uint32_t theme_color = 0;
-    if (selectedNum != 6)
+    if (selectedNum != 8)
         theme_color = icon_list[selectedNum].color;
     else
         theme_color = 0;
@@ -297,6 +297,12 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
             app_ptr = new MOONCAKE::USER_APP::Set_Brightness;
             break;
         case 6:
+            app_ptr = new MOONCAKE::USER_APP::ClaudeUsage;
+            break;
+        case 7:
+            app_ptr = new MOONCAKE::USER_APP::PcStats;
+            break;
+        case 8:
             app_ptr = new MOONCAKE::USER_APP::MoreMenu;
             break;
         default:
