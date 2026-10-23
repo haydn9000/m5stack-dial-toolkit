@@ -114,6 +114,21 @@ void MoreMenu::_item_selected_callback(uint8_t selectedNum)
     }
 
 
+    if (selected_item_tag == "Deep Sleep")
+    {
+        _data.hal->canvas->fillScreen(TFT_BLACK);
+        _canvas_update();
+
+
+        _data.hal->rtc.clearIRQ();
+        _data.hal->rtc.disableIRQ();
+
+        delay(500);
+
+        _data.hal->deepSleep();
+    }
+
+
     if (selected_item_tag == "Power Off")
     {
         _data.hal->canvas->fillScreen(TFT_BLACK);

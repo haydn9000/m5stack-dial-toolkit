@@ -24,6 +24,7 @@ namespace CYBER
     constexpr uint32_t CYAN     = 0x00F0FF;  // electric cyan
     constexpr uint32_t MAGENTA  = 0xFF2A6D;  // hot pink-magenta
     constexpr uint32_t AMBER    = 0xFCEE0A;  // signature electric yellow
+    constexpr uint32_t GOLD     = 0xE8B923;  // burnt-gold / molten yellow — warmer & darker than AMBER
     constexpr uint32_t GREEN    = 0x00FF9F;  // neon mint
     constexpr uint32_t RED      = 0xFF003C;  // alert red
     constexpr uint32_t WHITE    = 0xEAF6FF;  // cool off-white core

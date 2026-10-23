@@ -235,29 +235,20 @@ namespace HAL
         return true;
     }
 
-    /* Seed the RTC from the firmware's build time whenever a genuinely new
-     * build is flashed (detected via a build-timestamp marker persisted in
-     * NVS — flashing looks like any other reset from here, so this is the
-     * only way to tell "new build" apart from "normal reboot"), or if the
-     * RTC's current time is implausible (fresh device, or time lost after a
-     * full power loss with no backup battery). Reflashing the SAME build, or
-     * a normal reset/power-cycle, leaves the clock alone. */
+    /* Seed the RTC from the firmware's build time only if its current time is
+     * implausible (fresh device with an uninitialized RTC, or time lost after
+     * a full power loss with no backup battery). Once the RTC holds a
+     * plausible time — whether seeded here or set by hand via Set Time —
+     * reflashing never touches it again, including reflashing a newer build. */
     static void _rtc_seed_if_needed(PCF8563::PCF8563& rtc)
     {
         rtc.init();   // ensure the oscillator is running (clears the STOP bit)
-
-        char build_ts[32];
-        snprintf(build_ts, sizeof(build_ts), "%s %s", __DATE__, __TIME__);
-
-        Preferences prefs;
-        prefs.begin("settings", false);
-        bool new_build = prefs.getString("build_ts", "") != build_ts;
 
         tm cur;
         bool time_implausible = !(rtc.getTime(cur) == ESP_OK &&
                                    cur.tm_year >= 2023 && cur.tm_mon >= 0 && cur.tm_mon <= 11);
 
-        if (new_build || time_implausible)
+        if (time_implausible)
         {
             tm bt = {};
             if (_build_time(bt))
@@ -267,11 +258,6 @@ namespace HAL
                          bt.tm_year, bt.tm_mon + 1, bt.tm_mday, bt.tm_hour, bt.tm_min, bt.tm_sec);
             }
         }
-
-        if (new_build)
-            prefs.putString("build_ts", build_ts);
-
-        prefs.end();
     }
 
     void HAL::init()
@@ -310,6 +296,13 @@ namespace HAL
     {
         gpio_num_t pin_pwr_holding = (gpio_num_t)HAL_PIN_PWR_HOLDING;
 
+        /* Release any hold left over from deepSleep() before reconfiguring —
+         * gpio_hold_en() latches a pin's level even across the reset that
+         * follows a deep-sleep wake, and would otherwise silently block the
+         * gpio_set_level() calls below (and any later powerOff()) from
+         * taking effect. */
+        gpio_hold_dis(pin_pwr_holding);
+
         gpio_reset_pin(pin_pwr_holding);
         gpio_set_direction(pin_pwr_holding, GPIO_MODE_OUTPUT);
         gpio_set_pull_mode(pin_pwr_holding, GPIO_PULLUP_PULLDOWN);
@@ -330,20 +323,33 @@ namespace HAL
         gpio_set_level(pin_pwr_holding, 0);
     }
 
-    void HAL::powerOffOrSleep()
+    void HAL::deepSleep()
     {
-        powerOff();
+        /* Always deep sleep, on battery or external power alike — HOLD
+         * (GPIO46) is left asserted (set by powerOn() at boot) so the board
+         * keeps running off battery through the whole sleep. A HOLD=0 hard
+         * cutoff was tried here previously but, on battery alone, left the
+         * board unrecoverable except by reconnecting external power — there
+         * is no confirmed hardware path from the WAKE button back into the
+         * power-hold circuit once everything is unpowered. See
+         * docs/superpowers/specs/2026-07-13-deep-sleep-on-battery-design.md. */
 
-        /* If we're still executing, HOLD had no effect — external power
-         * (USB/DC) is present, since this board only honors HOLD=0 when
-         * running off battery alone. Give the (no-op) cutoff a moment to
-         * settle, then fall into deep sleep instead; the RTC keeps running
-         * off VBAT_IN either way. */
-        delay(200);
+        /* GPIO46 is outside the RTC domain (GPIO0-21 only on ESP32-S3), so
+         * without an explicit hold its driven-high level is simply lost the
+         * instant deep sleep begins — on battery alone that means the power
+         * path collapses immediately, defeating the "keeps running" comment
+         * above and leaving nothing able to wake it. gpio_hold_en() latches
+         * the pin's current level through sleep; gpio_deep_sleep_hold_en()
+         * is required in addition to make that hold actually apply during
+         * deep sleep specifically (per driver/gpio.h). Released again by
+         * powerOn() on the next boot. */
+        gpio_num_t pin_pwr_holding = (gpio_num_t)HAL_PIN_PWR_HOLDING;
+        gpio_hold_en(pin_pwr_holding);
+        gpio_deep_sleep_hold_en();
 
         /* Cut backlight power before sleeping — it's LEDC-driven and stays lit
          * at whatever brightness was last set otherwise, defeating the point
-         * of sleeping to save power on external supply. */
+         * of sleeping to save power. */
         display.setBrightness(0);
 
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_14, 0);   // wake when TP_INT goes low (touch)
@@ -357,6 +363,25 @@ namespace HAL
         rtc_gpio_pulldown_dis(GPIO_NUM_14);
 
         esp_deep_sleep_start();
+    }
+
+    void HAL::powerOffOrSleep()
+    {
+        powerOff();
+
+        /* If we're still executing, HOLD had no effect — external power
+         * (USB/DC) is present, since this board only honors HOLD=0 when
+         * running off battery alone. Give the (no-op in that case) cutoff a
+         * moment to settle, then fall back to the same touch-wakeable deep
+         * sleep as deepSleep(); a genuine "off" isn't achievable here since
+         * external power keeps the rail up regardless of HOLD. On battery
+         * alone, execution never reaches past this delay() — the board is
+         * already fully powered down, and only reconnecting external power
+         * brings it back (no confirmed hardware path from the WAKE button
+         * into the power-hold circuit once everything is unpowered). */
+        delay(200);
+
+        deepSleep();
     }
 
     bool i2c_init(i2c_port_t i2cPort, int sda, int scl, uint32_t clkSpeed, bool pullUpEnable)

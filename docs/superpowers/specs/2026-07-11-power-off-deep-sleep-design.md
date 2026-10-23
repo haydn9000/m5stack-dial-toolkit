@@ -1,5 +1,12 @@
 # Power Off: real cutoff on battery, deep sleep when plugged in
 
+> **Superseded by `2026-07-13-deep-sleep-on-battery-design.md`.** On-device
+> testing found the battery-path assumption below — that the WAKE button can
+> restart the board after a `HOLD=0` cutoff — does not hold on this
+> hardware; only reconnecting external power did. The feature now always
+> deep-sleeps regardless of power source. Kept here as a historical record
+> of what was tried and why.
+
 ## Context
 
 The M5Dial's RTC (PCF8563) is powered from `VBAT_IN`, the same rail as the board's

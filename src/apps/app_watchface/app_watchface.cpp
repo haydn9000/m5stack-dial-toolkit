@@ -198,11 +198,12 @@ void Watchface::_render_time(float sec_float)
 {
     LGFX_Sprite* c = _data.hal->canvas;
     const uint32_t accent = CYBER::CYAN;
+    const uint32_t hand_accent = CYBER::GOLD;   // sweep hand stays burnt-gold
 
     wf_background(c, accent);
-    wf_sweep_trail(c, sec_float, accent);   // under the rim
+    wf_sweep_trail(c, sec_float, hand_accent);   // under the rim
     wf_rim(c, sec_float, accent);
-    wf_sweep_head(c, sec_float, accent);    // over the rim
+    wf_sweep_head(c, sec_float, hand_accent);    // over the rim
 
     /* Eyebrow: amber "TOP OF HOUR" pulse at :00, otherwise a quiet status. */
     if (_data.now.tm_min == 0)

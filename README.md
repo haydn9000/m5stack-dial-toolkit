@@ -15,7 +15,7 @@ The M5Dial is an ESP32-S3 rotary-encoder device with a 240×240 round display, t
 - **Stopwatch / Timer / Pomodoro** — three time apps. The stopwatch times with centisecond precision, the countdown timer ends with a loud resonant alarm, and the pomodoro tracks focus/break cycles with session dots.
 - **Set Time** — set the RTC on-device: turn to adjust the highlighted field, press for the next field, hold to save.
 - **Brightness Control** — adjust screen brightness as a clean 0–100 % (persisted to NVS, restored on boot).
-- **More menu** — extra apps: LCD test, RTC clock, Set Time, RFID scanner, WiFi scanner, BLE heart-rate server, temperature demo, and power off.
+- **More menu** — extra apps: LCD test, RTC clock, Set Time, RFID scanner, WiFi scanner, BLE heart-rate server, temperature demo, deep sleep, and power off.
 - **Neon-cyberpunk UI** — an electric-yellow / cyan / red palette on near-black, CRT scanlines, an asymmetric HUD frame, 7-segment readouts with a glitchy chromatic-aberration shadow, a "decrypt" boot-in animation on the time apps, and cyberpunk buzzer sound effects (sweeps and arpeggios rather than flat beeps). HTML design prototypes live in [`design/`](design/).
 
 ## Screenshots
@@ -66,13 +66,15 @@ To use the **BLE Volume Controller**, open the app on the dial, then pair with `
 
 ### Keeping time
 
-Whenever you flash a genuinely new build, the firmware reseeds the RTC from that build's timestamp (tracked via a marker in NVS, so it can tell "new build" apart from a normal reboot) — it also reseeds if the RTC's current time is implausible, e.g. a brand-new device. A normal reset/power-cycle, or reflashing the exact same build, leaves the clock alone. You can fine-tune it any time in **Set Time**.
+The firmware seeds the RTC from the build's timestamp only if its current time is implausible — a brand-new device, or time lost after a full power loss with no backup battery. Once the RTC holds a plausible time, reflashing never overwrites it, including reflashing a newer build. You can fine-tune it any time in **Set Time**.
 
 The RTC (PCF8563) draws its power straight from the `VBAT_IN` rail — the same rail as the board's LiPo battery input — with **no separate backup cell fitted by default**, so unplugging external power drops that rail to 0V and the clock resets. To retain time while unplugged, plug a small 3.7V single-cell LiPo (JST-1.25 2-pin, matching the socket's polarity marking) into the Dial's onboard battery socket — the onboard charge circuit tops it off whenever USB/DC power is present, and at ~1.9µA sleep draw even a small cell lasts a long time just holding up the RTC.
 
-### Power Off
+### Deep Sleep vs. Power Off
 
-The More Menu's **Power Off** adapts to however the Dial is powered. On battery, with no USB/DC connected, it genuinely cuts all power — wake it back up with the physical button. Left plugged into USB/DC (where software can't cut power on this board), it instead blanks the screen and drops into a low-power deep sleep; wake it by tapping the touchscreen.
+The More Menu's **Deep Sleep** item blanks the screen and drops into a low-power ESP32 deep sleep, on battery or USB/DC alike — wake it back up by tapping the touchscreen. Deep-sleep wake is a full reboot — the watchface reappears with the correct time, since the RTC keeps running throughout regardless of what the rest of the board is doing.
+
+**Power Off** tries to genuinely cut all power (for the lowest possible draw) and only falls back to the same deep sleep as Deep Sleep when that's not possible — i.e. when left plugged into USB/DC, where software can't cut power on this board. **On battery alone, Power Off is a one-way trip**: once power is actually cut, neither tapping the screen nor pressing the physical button brings it back — only reconnecting USB/DC does. Stick to Deep Sleep unless you specifically want that lower-draw, USB-recoverable-only state.
 
 ## Project Structure
 

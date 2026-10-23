@@ -32,6 +32,7 @@ void MoreMenu::_create_menu()
         image_data_icon_wifi,     // WiFi Scan
         image_data_icon_ble,      // BLE Server
         image_data_icon_temp,     // Temp Demo
+        nullptr,                  // Deep Sleep
         nullptr                   // Power Off
     });
 
@@ -63,6 +64,7 @@ void MoreMenu::_create_menu()
         "WiFi Scan",
         "BLE Server",
         "Temp Demo",
+        "Deep Sleep",
         "Power Off"
     };
 

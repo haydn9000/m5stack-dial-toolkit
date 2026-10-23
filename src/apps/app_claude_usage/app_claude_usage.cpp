@@ -57,29 +57,37 @@ static void _asterisk_mark(LGFX_Sprite* c, int x, int y, int r, uint32_t col)
     }
 }
 
-/* Status is secondary to the hero number — allowed, limited, and rejected
- * all get the same small quiet outline badge so none of them compete with
- * the number for attention. Urgency still reads through colour (and, for
- * session usage, the ring's own coral -> red bleed). */
-static void _quiet_pill(LGFX_Sprite* c, int cx, int y, const char* label, uint32_t accent)
+/* "2h 14m" / "3d 5h" / "45m" — a relative countdown reads at a glance,
+ * unlike the sender's absolute "Resets Oct 24, 3pm (PDT)" string. */
+static void _fmt_mins(char* dst, size_t n, int mins)
 {
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
-    int tw = c->textWidth(label);
-    int w = tw + 22, h = 16, x = cx - w / 2;
+    if (mins < 0) mins = 0;
+    int d = mins / 1440, h = (mins % 1440) / 60, m = mins % 60;
+    if (d > 0)      snprintf(dst, n, "%dd %dh", d, h);
+    else if (h > 0) snprintf(dst, n, "%dh %02dm", h, m);
+    else            snprintf(dst, n, "%dm", m);
+}
 
-    c->drawRoundRect(x, y, w, h, h / 2, CYBER::blend(accent, CYBER::BG, 0.55f));
-    c->fillCircle(x + 11, y + h / 2, 2, CYBER::blend(accent, CYBER::BG, 0.7f));
-    c->setTextDatum(textdatum_t::middle_left);
-    c->setTextColor(CYBER::blend(accent, CYBER::WHITE, 0.15f));
-    c->drawString(label, x + 18, y + h / 2);
+/* Horizontal meter for the weekly figure: dim track, accent fill, bright
+ * leading tick. Pill-shaped so it sits comfortably inside the round bezel. */
+static void _draw_bar(LGFX_Sprite* c, int cx, int y, int w, int h, float frac, uint32_t accent)
+{
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    int x = cx - w / 2;
+    c->fillRoundRect(x, y, w, h, h / 2, CYBER::blend(CYBER::TRACK, CYBER::BG, 0.9f));
+    int fw = (int)(w * frac);
+    if (fw >= h)
+    {
+        c->fillRoundRect(x, y, fw, h, h / 2, accent);
+        c->fillRect(x + fw - 2, y, 2, h, CYBER::WHITE);
+    }
+    else if (fw > 0)
+        c->fillCircle(x + h / 2, y + h / 2, h / 2, accent);
 }
 
 /* Hero gauge: the established segmented pip-ring (progressRingAt), plus
- * Claude's asterisk spark at the leading edge — a small brand touch that's
- * just straight lines, not text, so it renders identically to the design
- * mockup (unlike rotated rim text, which doesn't translate to the real
- * bitmap font — see the "prior design" revert this replaced). */
+ * Claude's asterisk spark at the leading edge. */
 static void _draw_reactor_ring(LGFX_Sprite* c, float sessionFrac, uint32_t accent)
 {
     CYBER::progressRingAt(c, RING_CX, RING_CY, RING_R, sessionFrac, accent);
@@ -95,77 +103,111 @@ static void _draw_reactor_ring(LGFX_Sprite* c, float sessionFrac, uint32_t accen
 
 static void _draw_no_data_panel(LGFX_Sprite* c, uint32_t accent)
 {
-    int x = 24, y = 78, w = 192, h = 104;
-    c->fillRoundRect(x, y, w, h, 10, CYBER::blend(CYBER::BG, CYBER::WHITE, 0.06f));
-    c->drawRoundRect(x, y, w, h, 10, CYBER::blend(accent, CYBER::BG, 0.45f));
+    _asterisk_mark(c, 120, 62, 16, accent);
 
-    _asterisk_mark(c, 120, 100, 14, CYBER::blend(accent, CYBER::BG, 0.85f));
-
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
     c->setTextDatum(textdatum_t::middle_center);
+    c->setFont(&fonts::Font4);
     c->setTextColor(CYBER::WHITE);
-    c->drawString("AWAITING DATA", 120, 122);
+    c->drawString("Claude", 120, 100);
+
+    c->setFont(&fonts::Font2);
+    c->setTextColor(CYBER::blend(accent, CYBER::WHITE, 0.4f));
+    c->drawString("waiting for data...", 120, 128);
+
+    c->drawFastHLine(60, 146, 120, CYBER::blend(accent, CYBER::BG, 0.35f));
 
     c->setTextColor(CYBER::SLATE);
-    c->drawString("BLE   M5DIAL-001", 120, 142);
-    c->drawString("USB   claude_sender.py <port>", 120, 158);
+    c->drawString("BLE  M5DIAL-001", 120, 162);
+    c->drawString("or USB: claude_sender.py", 120, 180);
 
-    char addr[48];
-    snprintf(addr, sizeof(addr), "ADDR  %s", PC_LINK::bleAddress());
-    c->setTextColor(CYBER::blend(CYBER::SLATE, CYBER::BG, 0.8f));
-    c->drawString(addr, 120, 174);
+    c->setFont(&fonts::Font0);
+    c->setTextColor(CYBER::DIMTEXT);
+    c->drawString(PC_LINK::bleAddress(), 120, 198);
 }
 
 void ClaudeUsage::_render()
 {
     LGFX_Sprite* c = _data.hal->canvas;
     c->fillScreen(CYBER::BG);
-    for (int y = 0; y < 240; y += 4) c->drawFastHLine(0, y, 240, CYBER::SCANLINE);
 
     auto& u = PC_LINK::claudeUsage;
 
     if (!u.valid)
     {
-        c->setFont(&fonts::Font0);
-        c->setTextSize(2);
-        c->setTextDatum(textdatum_t::middle_center);
-        c->setTextColor(CLAUDE_ACCENT);
-        c->drawString("CLAUDE USAGE", RING_CX, 42);
-
         _draw_no_data_panel(c, CLAUDE_ACCENT);
         _canvas_update();
         return;
     }
 
     uint32_t accent = _session_accent(u.session_pct);
-    float sessionFrac = u.session_pct / 100.0f;
+    _draw_reactor_ring(c, u.session_pct / 100.0f, accent);
 
-    _draw_reactor_ring(c, sessionFrac, accent);
-
+    /* Header: "5H SESSION" normally; replaced by the status in its warning
+     * colour when the API reports we're limited or rejected. */
     bool limited  = (strncmp(u.status, "limited",  7) == 0);
     bool rejected = (strncmp(u.status, "rejected", 8) == 0);
-    const char* statusText = limited ? "LIMITED" : (rejected ? "REJECTED" : "ALLOWED");
-    uint32_t statusAccent  = limited ? CYBER::AMBER : (rejected ? CYBER::RED : CYBER::GREEN);
-    _quiet_pill(c, RING_CX, 48, statusText, statusAccent);
-
-    char big[4];
-    snprintf(big, sizeof(big), "%2d", (int)u.session_pct);
-    CYBER::bigTime(c, big, CYBER::WHITE, 0.0f);
-
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
     c->setTextDatum(textdatum_t::middle_center);
-    c->setTextColor(CYBER::blend(accent, CYBER::WHITE, 0.3f));
-    c->drawString("CURRENT", RING_CX, 150);
+    c->setFont(&fonts::Font2);
+    if (limited || rejected)
+    {
+        c->setTextColor(limited ? CYBER::AMBER : CYBER::RED);
+        c->drawString(limited ? "RATE LIMITED" : "REJECTED", RING_CX, 42);
+    }
+    else
+    {
+        c->setTextColor(CYBER::blend(accent, CYBER::WHITE, 0.55f));
+        c->drawString("5H SESSION", RING_CX, 42);
+    }
 
+    /* Hero number + "%" set together and centred as one unit. No chromatic
+     * shadow here — it smeared the digits at this size. */
+    char big[8];
+    snprintf(big, sizeof(big), "%d", (int)(u.session_pct + 0.5f));
+    c->setFont(&fonts::Font7);
+    int nw = c->textWidth(big);
+    c->setFont(&fonts::Font4);
+    int pw = c->textWidth("%");
+    int x0 = RING_CX - (nw + 4 + pw) / 2;
+
+    c->setFont(&fonts::Font7);
+    c->setTextDatum(textdatum_t::middle_left);
+    c->setTextColor(u.session_pct >= 80.0f ? accent : CYBER::WHITE);
+    c->drawString(big, x0, 90);
+    c->setFont(&fonts::Font4);
+    c->setTextDatum(textdatum_t::bottom_left);
+    c->setTextColor(accent);
+    c->drawString("%", x0 + nw + 4, 112);
+
+    char rs[24], line[32];
+    _fmt_mins(rs, sizeof(rs), u.session_reset_mins);
+    snprintf(line, sizeof(line), "resets in %s", rs);
+    c->setFont(&fonts::Font2);
+    c->setTextDatum(textdatum_t::middle_center);
     c->setTextColor(CYBER::SLATE);
-    c->drawString(u.session_reset_str[0] ? u.session_reset_str : "", RING_CX, 167);
+    c->drawString(line, RING_CX, 132);
 
-    char weeklyStr[24];
-    snprintf(weeklyStr, sizeof(weeklyStr), "WEEKLY 7D  %d%%", (int)u.weekly_pct);
-    c->setTextColor(_weekly_accent());
-    c->drawString(weeklyStr, RING_CX, 184);
+    c->drawFastHLine(RING_CX - 60, 151, 120, CYBER::blend(CYBER::BORDER, CYBER::BG, 0.8f));
+
+    /* Weekly block: label left, value right, meter, then its reset. */
+    uint32_t wAccent = _weekly_accent();
+    const int WX = RING_CX - 60, WW = 120;
+    c->setFont(&fonts::Font2);
+    c->setTextDatum(textdatum_t::middle_left);
+    c->setTextColor(CYBER::SLATE);
+    c->drawString("WEEK", WX, 166);
+    char wp[8];
+    snprintf(wp, sizeof(wp), "%d%%", (int)(u.weekly_pct + 0.5f));
+    c->setTextDatum(textdatum_t::middle_right);
+    c->setTextColor(CYBER::WHITE);
+    c->drawString(wp, WX + WW, 166);
+
+    _draw_bar(c, RING_CX, 177, WW, 6, u.weekly_pct / 100.0f, wAccent);
+
+    _fmt_mins(rs, sizeof(rs), u.weekly_reset_mins);
+    snprintf(line, sizeof(line), "resets in %s", rs);
+    c->setTextDatum(textdatum_t::middle_center);
+    c->setTextColor(CYBER::blend(CYBER::SLATE, CYBER::BG, 0.75f));
+    c->drawString(line, RING_CX, 193);
 
     _canvas_update();
 }

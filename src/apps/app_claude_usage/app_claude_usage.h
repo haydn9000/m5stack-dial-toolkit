@@ -1,8 +1,9 @@
 /**
  * @file app_claude_usage.h
- * @brief Claude Usage — concentric dual-ring display of session (5h) and
- *        weekly (7d) rate-limit utilization, fed by PC_LINK over BLE/USB
- *        serial. Ported from the wiodeck project's claudeUsage.cpp.
+ * @brief Claude Usage — session (5h) utilization as the big number + outer
+ *        pip ring, weekly (7d) as a labelled bar underneath, each with a
+ *        "resets in …" countdown. Fed by PC_LINK over BLE/USB serial.
+ *        Ported from the wiodeck project's claudeUsage.cpp.
  *
  *  Controls
  *   - Long press : exit to menu
