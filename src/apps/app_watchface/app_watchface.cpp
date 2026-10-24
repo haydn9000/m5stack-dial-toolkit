@@ -9,6 +9,7 @@
 #include "app_watchface.h"
 #include "../common_define.h"
 #include "../utilities/cyber_ui/cyber_ui.hpp"
+#include "../utilities/time_sync/time_sync.h"
 #include <math.h>
 
 
@@ -19,15 +20,21 @@ static const float DEG = 0.01745329f;
 static const int   CX  = 120;
 static const int   CY  = 120;
 
-static const char* DOW[7]  = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
-static const char* MON[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-                              "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+static const char* DOW[7]  = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+static const char* MON[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+static const char* DOW_LONG[7]  = {"Sunday", "Monday", "Tuesday", "Wednesday",
+                                   "Thursday", "Friday", "Saturday"};
+static const char* MON_LONG[12] = {"January", "February", "March", "April", "May", "June", "July",
+                                   "August", "September", "October", "November", "December"};
 
 /* Bounds-safe lookups: an unset RTC yields tm_mon == -1 (month register 0),
  * and C's `% n` keeps the sign of a negative operand, so plain `x % n` does
  * NOT guarantee a valid index. Clamp explicitly. */
 static const char* dow_name(int w) { return (w >= 0 && w < 7)  ? DOW[w] : "---"; }
 static const char* mon_name(int m) { return (m >= 0 && m < 12) ? MON[m] : "---"; }
+static const char* dow_long(int w)  { return (w >= 0 && w < 7)  ? DOW_LONG[w] : "---"; }
+static const char* mon_long(int m)  { return (m >= 0 && m < 12) ? MON_LONG[m] : "---"; }
 
 
 /* ---- input helpers (same idiom as app_stopwatch) ---- */
@@ -86,12 +93,10 @@ static int _day_of_year(const tm& t)
 
 static void wf_background(LGFX_Sprite* c, uint32_t accent)
 {
-    /* Faint accent tint at the top fading to near-black, then CRT scanlines. */
-    uint32_t top = CYBER::blend(accent, CYBER::BG, 0.10f);
-    for (int y = 0; y < 240; y += 2)
-        c->fillRect(0, y, 240, 2, CYBER::blend(top, CYBER::BG, y / 239.0f));
-    for (int y = 0; y < 240; y += 4)
-        c->drawFastHLine(0, y, 240, CYBER::SCANLINE);
+    /* Plain ground: the sweep and rim carry the look, and scanlines behind
+     * the digits only cost contrast. */
+    (void)accent;
+    c->fillScreen(CYBER::BG);
 }
 
 /* 60-tick rim, hour brackets, neon edge. litSec (0..60) marks the hot tick. */
@@ -182,13 +187,10 @@ static void wf_sweep_head(LGFX_Sprite* c, float sec, uint32_t accent)
     c->fillSmoothCircle(gx, gy, 2, CYBER::WHITE);
 }
 
-static void wf_text(LGFX_Sprite* c, const char* t, int y, uint32_t col, int size = 1)
+static void wf_text(LGFX_Sprite* c, const char* t, int y, uint32_t col,
+                    const lgfx::IFont* font = CYBER::FONT_SMALL())
 {
-    c->setFont(&fonts::Font0);
-    c->setTextSize(size);
-    c->setTextColor(col);
-    c->setTextDatum(textdatum_t::middle_center);
-    c->drawString(t, CX, y);
+    CYBER::text(c, t, CX, y, font, col);
 }
 
 
@@ -205,13 +207,19 @@ void Watchface::_render_time(float sec_float)
     wf_rim(c, sec_float, accent);
     wf_sweep_head(c, sec_float, hand_accent);    // over the rim
 
-    /* Eyebrow: amber "TOP OF HOUR" pulse at :00, otherwise a quiet status. */
+    /* Eyebrow: amber "Top of the hour" at :00, otherwise the time-sync
+     * status so a drifting clock is visible at a glance. */
     if (_data.now.tm_min == 0)
-        wf_text(c, "- T O P   O F   H O U R -", 56, CYBER::AMBER);
+        wf_text(c, "Top of the hour", 58, CYBER::AMBER);
     else
-        wf_text(c, "S Y S  -  O N L I N E", 56, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.85f));
+    {
+        char sync[32];
+        bool fresh = TIME_SYNC::statusLine(sync, sizeof(sync));
+        wf_text(c, sync, 58, fresh ? CYBER::blend(CYBER::GREEN, CYBER::BG, 0.75f)
+                                   : CYBER::blend(CYBER::SLATE, CYBER::BG, 0.75f));
+    }
 
-    /* Centre HH:MM (Font7 + chromatic ghosts); colon blinks on the half-second.
+    /* Centre HH:MM (Font7); colon blinks on the half-second.
      * On open it scrambles into place (shared boot-in decrypt). */
     uint32_t bootMs = millis() - _data.boot_start;
     char big[8];
@@ -220,17 +228,17 @@ void Watchface::_render_time(float sec_float)
              _data.now.tm_hour, colon ? ':' : ' ', _data.now.tm_min);
     char shown[8];
     CYBER::scrambleTime(shown, big, bootMs);
-    CYBER::bigTime(c, shown, CYBER::WHITE, 1.7f);   // livelier glitch on the home face
+    CYBER::bigTime(c, shown, CYBER::WHITE);
 
     /* Weekday + date, then the quiet seconds numeral at the bottom. */
     char date[20];
-    snprintf(date, sizeof(date), "%s   %02d %s",
+    snprintf(date, sizeof(date), "%s %d %s",
              dow_name(_data.now.tm_wday), _data.now.tm_mday, mon_name(_data.now.tm_mon));
-    wf_text(c, date, 166, CYBER::blend(accent, CYBER::BG, 0.48f), 2);
+    wf_text(c, date, 164, CYBER::blend(accent, CYBER::WHITE, 0.45f), CYBER::FONT_LABEL());
 
     char secs[4];
     snprintf(secs, sizeof(secs), "%02d", _data.now.tm_sec);
-    wf_text(c, secs, 190, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.9f), 2);
+    wf_text(c, secs, 190, CYBER::SLATE, CYBER::FONT_LABEL());
 
     _canvas_update();
 }
@@ -252,27 +260,22 @@ void Watchface::_render_date()
     c->fillSmoothCircle(CX + (int)(110 * cosf(sweep_to * DEG)),
                         CY + (int)(110 * sinf(sweep_to * DEG)), 3, CYBER::WHITE);
 
-    wf_text(c, "D A T E", 46, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.9f));
-
-    /* Big weekday (efontCN_24 — Font7 has no letters). */
-    c->setFont(GUI_FONT_CN_BIG);
-    c->setTextSize(2);
-    c->setTextColor(CYBER::WHITE);
-    c->setTextDatum(textdatum_t::middle_center);
-    c->drawString(dow_name(_data.now.tm_wday), CX, 110);
+    /* Full weekday as the hero, the date under it, then where we are in
+     * the year. */
+    wf_text(c, dow_long(_data.now.tm_wday), 92, CYBER::WHITE, CYBER::FONT_VALUE());
 
     char line[24];
-    snprintf(line, sizeof(line), "%02d %s %04d",
-             _data.now.tm_mday, mon_name(_data.now.tm_mon), _data.now.tm_year);
-    wf_text(c, line, 150, CYBER::blend(accent, CYBER::BG, 0.85f), 2);
+    snprintf(line, sizeof(line), "%d %s %04d",
+             _data.now.tm_mday, mon_long(_data.now.tm_mon), _data.now.tm_year);
+    wf_text(c, line, 124, CYBER::blend(accent, CYBER::WHITE, 0.8f), CYBER::FONT_LABEL());
 
-    char doy[16];
-    snprintf(doy, sizeof(doy), "DAY %d / %d", _day_of_year(_data.now),
+    char doy[24];
+    snprintf(doy, sizeof(doy), "Day %d of %d", _day_of_year(_data.now),
              _days_in_month(1, _data.now.tm_year) == 29 ? 366 : 365);
-    wf_text(c, doy, 184, CYBER::blend(CYBER::DIMTEXT, CYBER::BG, 0.9f));
+    wf_text(c, doy, 152, CYBER::SLATE);
 
     /* How to get back — turn or press both return to the time view. */
-    wf_text(c, "TURN OR PRESS = BACK", 204, CYBER::blend(accent, CYBER::BG, 0.5f));
+    wf_text(c, "Turn or press for time", 190, CYBER::blend(CYBER::SLATE, CYBER::BG, 0.7f));
 
     _canvas_update();
 }

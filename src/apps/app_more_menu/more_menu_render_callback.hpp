@@ -11,6 +11,8 @@
 #pragma once
 #include <vector>
 #include <cstdint>
+#include <cmath>
+#include "../utilities/cyber_ui/cyber_ui.hpp"
 
 
 /* Render setting */
@@ -25,17 +27,6 @@ struct MoreMenuRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
         LGFX_Sprite* _icon_canvas = nullptr;
         std::vector<const uint16_t*> _icons;
 
-        float approxSin(float x)
-        {
-            float t = x * 0.15915f;
-            t = t - (int)t;
-            if (t < 0.5)
-                return (-16.0f * t * t) + (8.0f * t);
-            else
-                return (16.0f * t * t) - (16.0f * t) - (8.0f * t) + 8.0f;
-        }
-        
-
     public:
         inline void setCanvas(LGFX_Sprite* canvasPtr) { _canvas = canvasPtr; }
         inline void setIconCanvas(LGFX_Sprite* iconCanvas) { _icon_canvas = iconCanvas; }
@@ -48,99 +39,51 @@ struct MoreMenuRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
             const SMOOTH_MENU::RenderAttribute_t& camera
         ) override
         {
-            _canvas->fillScreen(MORE_MENU_COLOR_BG);
-            
+            _canvas->fillScreen(CYBER::BG);
 
+            /* Centred list on the round panel: the selected row sits on the
+             * horizontal midline in a highlight pill; the others fade with
+             * distance and are dropped before they reach the narrow top and
+             * bottom of the circle, so no label ever runs off the edge. */
+            const int   mid_y   = 128;
+            const float spacing = 1.25f;   // menu rows are 26px; spread to ~32px
 
-            int menu_start_y_offset = 108;
-            float menu_rounded_x_offset = 0;
+            CYBER::text(_canvas, "More", 120, 36, CYBER::FONT_LABEL(),
+                        CYBER::blend(MORE_MENU_COLOR_SELECTOR, CYBER::WHITE, 0.8f));
 
+            /* Pill behind the selected row (fixed — the list scrolls under it) */
+            _canvas->fillSmoothRoundRect(30, mid_y - 17, 180, 34, 17,
+                                         CYBER::blend(MORE_MENU_COLOR_SELECTOR, CYBER::BG, 0.16f));
+            _canvas->drawRoundRect(30, mid_y - 17, 180, 34, 17,
+                                   CYBER::blend(MORE_MENU_COLOR_SELECTOR, CYBER::BG, 0.6f));
 
-            
-            // /* Draw selector */
-            // _canvas->fillSmoothRoundRect(
-            //     selector.x,
-            //     // selector.x + (menuItemList[selector.targetItem]->width - selector.width) / 2,
-            //     menu_start_y_offset + (menuItemList[selector.targetItem]->height - selector.height) / 2,
-            //     selector.width,
-            //     selector.height,
-            //     5,
-            //     MORE_MENU_COLOR_SELECTOR
-            // );
-            
-
-
-            /* Draw menu */
-            _canvas->setFont(GUI_FONT_CN_BIG);
-            /* Pin datum to top-left so labels stay right of their icons
-             * (a prior app may have left the shared canvas datum centered). */
-            _canvas->setTextDatum(textdatum_t::top_left);
-            uint8_t text_tag_color;
-            
-            for (int i = 0; i < menuItemList.size(); i++)
+            _canvas->setTextSize(1);
+            for (int i = 0; i < (int)menuItemList.size(); i++)
             {
-                /* Draw menu label */
-                if (i == 0)
-                {
-                    _canvas->setTextColor(MORE_MENU_COLOR_SELECTOR);
-                    _canvas->drawCenterString("MORE", 120, menuItemList[0]->y - selector.y + 20);
-                }
+                float dy = (float)(menuItemList[i]->y - selector.y);
+                int   y  = mid_y + (int)(dy * spacing);
+                if (y < 66 || y > 206)
+                    continue;
 
+                float dist = fabsf(dy) / 26.0f;           // rows from the selection
+                bool  sel  = dist < 0.5f;
+                uint32_t col = sel ? CYBER::WHITE
+                                   : CYBER::blend(CYBER::SLATE, CYBER::BG, 1.0f - 0.28f * dist);
 
-                /* Calculate item x offset */
-                menu_rounded_x_offset = menuItemList[i]->y - selector.y;
+                const char* tag = menuItemList[i]->tag.c_str();
+                _canvas->setFont(CYBER::FONT_LABEL());
+                int tw = _canvas->textWidth(tag);
+                bool has_icon = _icon_canvas != nullptr && i < (int)_icons.size() && _icons[i] != nullptr;
+                int x0 = 120 - (tw + (has_icon ? 28 : 0)) / 2;
 
-                /* Calculate item text color */
-                text_tag_color = 255 - std::abs(menu_rounded_x_offset) * 2;
-                _canvas->setTextColor(lgfx::color565(text_tag_color, text_tag_color, text_tag_color));
-
-                // menu_rounded_x_offset = 120 * std::sin((menu_rounded_x_offset / 120) + (3 * 3.14159f / 2)) + 120;
-                menu_rounded_x_offset = 120 * approxSin((menu_rounded_x_offset / 120) + (3 * 3.14159f / 2)) + 120;
-                // printf("%f\n", menu_rounded_x_offset);
-
-                
-
-                /* Draw tags */
-                _canvas->setTextSize(menuItemList[i]->height / 24);
-                _canvas->drawString(
-                    menuItemList[i]->tag.c_str(),
-                    menuItemList[i]->x + menu_rounded_x_offset,
-                    // menuItemList[i]->x,
-                    menuItemList[i]->y - selector.y + menu_start_y_offset
-                );
-
-                /* Draw the app icon to the left of the name (apps only) */
-                if (_icon_canvas != nullptr && i < (int)_icons.size() && _icons[i] != nullptr)
+                if (has_icon)
                 {
                     _icon_canvas->pushImage(0, 0, 42, 42, _icons[i]);
-                    int icon_x = menuItemList[i]->x + menu_rounded_x_offset - 22;
-                    int icon_y = menuItemList[i]->y - selector.y + menu_start_y_offset + 12;
-                    _icon_canvas->pushRotateZoom(_canvas, icon_x, icon_y, 0, 0.5, 0.5, TFT_BLACK);
+                    _icon_canvas->pushRotateZoom(_canvas, x0 + 11, y, 0, 0.5, 0.5, TFT_BLACK);
+                    x0 += 28;
                 }
+                CYBER::text(_canvas, tag, x0, y, CYBER::FONT_LABEL(), col, textdatum_t::middle_left);
             }
-
-
-
-
-            /* Draw selector (using standard fillSmoothRoundRect - no difference blend available in registry LovyanGFX) */
-            // NOTE: The original used fillSmoothRoundRectInDifference() which was a no-op (body fully
-            // commented out in the bundled LovyanGFX). Keeping it disabled to match original behaviour
-            // where no selector rectangle was drawn over the text.
-            // _canvas->fillSmoothRoundRect(
-            //     selector.x,
-            //     menu_start_y_offset + (menuItemList[selector.targetItem]->height - selector.height) / 2,
-            //     selector.width,
-            //     selector.height,
-            //     5,
-            //     MORE_MENU_COLOR_SELECTOR
-            // );
-
-    
-
-
-            // /* Drwa camera */
-            // _canvas->drawRect(camera.x, camera.y, camera.width, camera.height, TFT_GREENYELLOW);
-
 
             _canvas->pushSprite(0, 0);
         }

@@ -12,10 +12,46 @@
 #include <algorithm>
 #include <BleKeyboard.h>
 #include <NimBLEDevice.h>  /* for NimBLEDevice::isInitialized() */
+#include "../utilities/pc_link/pc_link.h"
 
+
+static const char* BLE_NAME = "M5Dial Volume";
 
 /* File-scope BleKeyboard instance — one at a time, apps don't run concurrently */
-static BleKeyboard bleKeyboard("M5Dial Volume", "M5Stack", 100);
+static BleKeyboard bleKeyboard(BLE_NAME, "M5Stack", 100);
+
+/* PC_LINK brings NimBLE up at boot as "M5DIAL-001", so BleKeyboard::begin()'s
+ * own init(BLE_NAME) is a no-op and it inherits PC_LINK's server, name and
+ * advert. Left like that, the dial advertised as "M5DIAL-001" with only the
+ * PC_LINK service: never "M5Dial Volume" in the host's pairing list, and the
+ * BLE sender scripts (which look for "M5DIAL-001") grabbed every advertising
+ * window. Re-dress the shared advert as a keyboard whenever the app opens;
+ * PC_LINK::setActive(true) dresses it back. */
+static void _advertise_as_keyboard()
+{
+    NimBLEDevice::setDeviceName(BLE_NAME);
+    NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    adv->reset();   // re-reads the device name; keeps the UUID list
+    adv->removeServiceUUID(NimBLEUUID(PC_LINK::BLE_SERVICE_UUID));
+    adv->removeServiceUUID(NimBLEUUID((uint16_t)0x1812));
+    adv->addServiceUUID(NimBLEUUID((uint16_t)0x1812));   // HID service
+    adv->setAppearance(0x03C1);                          // HID keyboard
+    adv->setScanResponse(true);
+    adv->start();
+}
+
+/* A computer we can send keys to: BleKeyboard's own isConnected() turns true
+ * for ANY central — including the Claude/PC Stats sender scripts — so check
+ * for an encrypted link instead; a paired HID host always encrypts. */
+static bool _host_connected()
+{
+    NimBLEServer* srv = NimBLEDevice::getServer();
+    if (srv == nullptr) return false;
+    for (uint16_t h : srv->getPeerDevices())
+        if (srv->getPeerIDInfo(h).isEncrypted())
+            return true;
+    return false;
+}
 /* begin() must only be called once; the BLE stack stays alive between app open/close */
 static bool _ble_started = false;
 
@@ -44,14 +80,8 @@ void BLE_Volume::_ble_init()
         bleKeyboard.begin();
         _ble_started = true;
     }
-    else if (!bleKeyboard.isConnected())
-    {
-        /* The BleKeyboard library does NOT restart advertising on disconnect
-         * when built with NimBLE, so re-entering the app while disconnected
-         * would otherwise stay stuck on "searching". Kick it back on. */
-        _log("Restarting BLE advertising");
-        NimBLEDevice::startAdvertising();
-    }
+    if (!_host_connected())
+        _advertise_as_keyboard();
 }
 
 
@@ -103,7 +133,7 @@ void BLE_Volume::onCreate()
     _last_raw = _data.hal->encoder.getCount();
 
     /* Draw initial page */
-    _gui.renderPage(bleKeyboard.isConnected(), _data.volume, _data.muted);
+    _gui.renderPage(_host_connected(), _data.volume, _data.muted);
 }
 
 
@@ -134,7 +164,7 @@ void BLE_Volume::onRunning()
                     /* Zero-mute: the host is already at actual 0 (not OS-muted),
                      * so just raise the level back off zero with volume-up keys. */
                     int presses = std::min(clicks, 100 / VOLUME_STEP);
-                    if (bleKeyboard.isConnected())
+                    if (_host_connected())
                     {
                         for (int i = 0; i < presses; i++)
                         {
@@ -148,7 +178,7 @@ void BLE_Volume::onRunning()
                 else
                 {
                     /* Button-mute at a real level: toggle OS mute off, keep level. */
-                    if (bleKeyboard.isConnected())
+                    if (_host_connected())
                     {
                         bleKeyboard.press(KEY_MEDIA_MUTE);
                         bleKeyboard.release(KEY_MEDIA_MUTE);
@@ -163,7 +193,7 @@ void BLE_Volume::onRunning()
                  * while it's OS-muted. Always send a key per detent so that
                  * once we bottom out at 0 we keep driving the host slider to
                  * absolute zero (the host clamps below 0). */
-                if (bleKeyboard.isConnected())
+                if (_host_connected())
                 {
                     for (int i = 0; i < clicks; i++)
                     {
@@ -182,7 +212,7 @@ void BLE_Volume::onRunning()
             /* Volume up. Each keypress moves the host by VOLUME_STEP%, so move
              * the on-screen value by the same amount to stay in sync. */
             int presses = std::min(clicks, (100 - _data.volume) / VOLUME_STEP);
-            if (bleKeyboard.isConnected())
+            if (_host_connected())
             {
                 for (int i = 0; i < presses; i++)
                 {
@@ -197,7 +227,7 @@ void BLE_Volume::onRunning()
         {
             /* Volume down */
             int presses = std::min(clicks, _data.volume / VOLUME_STEP);
-            if (bleKeyboard.isConnected())
+            if (_host_connected())
             {
                 for (int i = 0; i < presses; i++)
                 {
@@ -244,7 +274,7 @@ void BLE_Volume::onRunning()
         }
 
         /* Short press: mute toggle */
-        if (bleKeyboard.isConnected())
+        if (_host_connected())
         {
             bleKeyboard.press(KEY_MEDIA_MUTE);
             bleKeyboard.release(KEY_MEDIA_MUTE);
@@ -256,21 +286,22 @@ void BLE_Volume::onRunning()
         _has_saved   = true;
 
         /* Immediate GUI update on button press */
-        _gui.renderPage(bleKeyboard.isConnected(), _data.volume, _data.muted);
+        _gui.renderPage(_host_connected(), _data.volume, _data.muted);
         _data.page_update_time_count = millis();
     }
 
     /* Small yield keeps the BLE FreeRTOS tasks healthy */
     delay(10);
 
-    /* --- Disconnected? Make sure we keep advertising so the host can find us.
-     * (BleKeyboard's NimBLE build does not auto-restart advertising.) --- */
-    if (!bleKeyboard.isConnected())
+    /* --- No host? Keep advertising so it can find us — a connection from
+     * anything else (e.g. a sender script) stops advertising, and
+     * BleKeyboard's NimBLE build never restarts it. --- */
+    if (!_host_connected() && !NimBLEDevice::getAdvertising()->isAdvertising())
     {
         static uint32_t advertise_time_count = 0;
-        if ((millis() - advertise_time_count) > 2000)
+        if ((millis() - advertise_time_count) > 1000)
         {
-            NimBLEDevice::startAdvertising();
+            NimBLEDevice::getAdvertising()->start();
             advertise_time_count = millis();
         }
     }
@@ -279,7 +310,7 @@ void BLE_Volume::onRunning()
     /* --- Throttled GUI refresh --- */
     if ((millis() - _data.page_update_time_count) > _data.page_update_interval)
     {
-        _gui.renderPage(bleKeyboard.isConnected(), _data.volume, _data.muted);
+        _gui.renderPage(_host_connected(), _data.volume, _data.muted);
         _data.page_update_time_count = millis();
     }
 }
@@ -299,5 +330,6 @@ void BLE_Volume::onDestroy()
     _has_saved    = true;
     /* Leave the BLE stack running — the static bleKeyboard stays connected
      * so the host doesn't see a disconnect just because we went back to the
-     * launcher. */
+     * launcher. Only stop advertising as a keyboard outside the app. */
+    NimBLEDevice::stopAdvertising();
 }

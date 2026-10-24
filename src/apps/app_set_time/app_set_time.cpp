@@ -5,6 +5,7 @@
 #include "app_set_time.h"
 #include "../common_define.h"
 #include "../utilities/cyber_ui/cyber_ui.hpp"
+#include "../utilities/time_sync/time_sync.h"
 #include <math.h>
 
 
@@ -13,7 +14,7 @@ using namespace MOONCAKE::USER_APP;
 
 static const char* MON[12] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                               "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
-static const char* LABEL[SET_TIME::F_COUNT] = {"YEAR", "MONTH", "DAY", "HOUR", "MINUTE"};
+static const char* LABEL[SET_TIME::F_COUNT] = {"Year", "Month", "Day", "Hour", "Minute"};
 
 
 /* Blocking button read: 0 = none, 1 = short press, 2 = long press (>700ms). */
@@ -98,6 +99,7 @@ void SetTime::_save()
     t.tm_wday  = _day_of_week(_data.year, _data.mon, _data.day);
     t.tm_isdst = 0;
     _data.hal->rtc.setTime(t);
+    TIME_SYNC::forgetSyncPoint();   // a hand-set clock breaks the drift-rate baseline
     _log("RTC set: %04d-%02d-%02d %02d:%02d", _data.year, _data.mon, _data.day,
          _data.hour, _data.min);
 }
@@ -110,7 +112,7 @@ void SetTime::_render()
     CYBER::background(c, accent);
     /* Ring encodes progress through the fields. */
     CYBER::progressRing(c, (float)_data.field / (float)(SET_TIME::F_COUNT - 1), accent);
-    CYBER::title(c, "SET TIME", accent);
+    CYBER::title(c, "Set time", accent);
     CYBER::subtitle(c, LABEL[_data.field], CYBER::WHITE);
 
     /* Big Font7 value for the active field. */
@@ -120,19 +122,15 @@ void SetTime::_render()
     else if (_data.field == SET_TIME::F_DAY)  snprintf(big, sizeof(big), "%02d", _data.day);
     else if (_data.field == SET_TIME::F_HOUR) snprintf(big, sizeof(big), "%02d", _data.hour);
     else                                      snprintf(big, sizeof(big), "%02d", _data.min);
-    CYBER::bigTime(c, big, CYBER::WHITE, 0.3f);   // calm glitch while editing
+    CYBER::bigTime(c, big, CYBER::WHITE);
 
     /* Full preview so the field always has context. */
     char preview[24];
     snprintf(preview, sizeof(preview), "%04d %s %02d   %02d:%02d",
              _data.year, MON[_data.mon - 1], _data.day, _data.hour, _data.min);
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
-    c->setTextColor(CYBER::blend(accent, CYBER::BG, 0.7f));
-    c->setTextDatum(textdatum_t::middle_center);
-    c->drawString(preview, CYBER::CX, 158);
+    CYBER::text(c, preview, CYBER::CX, 158, CYBER::FONT_SMALL(), CYBER::SLATE);
 
-    CYBER::hint(c, "PRESS = NEXT   HOLD = SAVE");
+    CYBER::hint(c, "Press for next   Hold to save");
     _canvas_update();
 }
 

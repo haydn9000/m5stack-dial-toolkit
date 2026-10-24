@@ -34,6 +34,11 @@ namespace PC_LINK
         bool valid = false;
     };
 
+    /* GATT service the senders write to. The BLE Volume app shares the one
+     * NimBLE stack and must drop this from the advert while it advertises as
+     * a keyboard (and PC_LINK puts it back in setActive(true)). */
+    constexpr const char* BLE_SERVICE_UUID = "4d354449-414c-0000-0000-000000000001";
+
     extern ClaudeUsageData claudeUsage;
     extern uint16_t        claudeUsageVersion;
     extern PcStatsData     pcStats;
@@ -44,7 +49,9 @@ namespace PC_LINK
     void init();
 
     /* Start/stop BLE advertising. Call setActive(true) from an app's
-     * onCreate() and setActive(false) from its onDestroy(). */
+     * onCreate() and setActive(false) from its onDestroy(). setActive(true)
+     * re-applies PC_LINK's own name and advert, since the BLE Volume app
+     * re-purposes the shared stack as a keyboard while it is open. */
     void setActive(bool active);
 
     /* Call every onRunning(): drains pending serial/BLE data and updates

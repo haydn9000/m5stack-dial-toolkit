@@ -10,12 +10,12 @@
 
 using namespace MOONCAKE::USER_APP;
 
-/* Gauges spread wider apart than a naive even split (CPU/RAM only 8px apart
- * would crowd their labels together). GPU sits alone at the bottom so it
- * gets the biggest radius — it also carries the most text (name + temp). */
-static const int CPU_CX = 64,  CPU_CY = 84,  CPU_R = 42;
-static const int RAM_CX = 176, RAM_CY = 84,  RAM_R = 42;
-static const int GPU_CX = 120, GPU_CY = 188, GPU_R = 48;
+/* Three stacked rows (CPU / RAM / GPU): label left, percentage right, a bar,
+ * then temperature / detail under the bar. Rows read far better on the
+ * round panel than three small rings did: the text gets the full width of
+ * the screen instead of the inside of a 42px gauge. */
+static const int ROW_X0 = 42, ROW_X1 = 198;          // usable width at the rows' heights
+static const int ROW_Y[3] = {60, 112, 164};
 
 /* Blocking button read: 0 = none, 1 = short press, 2 = long press (>700ms). */
 static int _read_button(HAL::HAL* hal)
@@ -28,145 +28,105 @@ static int _read_button(HAL::HAL* hal)
     return (millis() - t0 > 700) ? 2 : 1;
 }
 
-static void _badge(LGFX_Sprite* c, int cx, int y, const char* label, uint32_t col)
+static uint32_t _temp_color(int t)
 {
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
-    int tw = c->textWidth(label);
-    int w = tw + 14, h = 15, x = cx - w / 2;
-    c->fillRoundRect(x, y, w, h, 7, CYBER::blend(col, CYBER::BG, 0.16f));
-    c->drawRoundRect(x, y, w, h, 7, CYBER::blend(col, CYBER::BG, 0.6f));
-    c->setTextDatum(textdatum_t::middle_center);
-    c->setTextColor(col);
-    c->drawString(label, cx, y + h / 2);
+    return (t < 60) ? CYBER::GREEN : ((t < 80) ? CYBER::AMBER : CYBER::RED);
 }
 
-/* PCB trace board: right-angle traces linking CPU/RAM/GPU like copper traces
- * on a real motherboard, with square via-nodes at every bend/junction —
- * states "one machine" without a straight diagonal line cutting across the
- * gauges' faces. Static (no travelling pulse): this app only redraws when
- * new telemetry arrives, so an animated pulse would just jump discontinuously
- * rather than actually animate. */
-static void _draw_circuit_board(LGFX_Sprite* c)
+/* "61°C" — the DejaVu fonts are ASCII-only, so the degree sign is drawn. */
+static void _draw_temp(LGFX_Sprite* c, int x, int y, int temp)
 {
-    uint32_t traceCol = CYBER::blend(CYBER::SLATE, CYBER::BG, 0.45f);
-    uint32_t nodeCol   = CYBER::SLATE;
-
-    auto via = [&](int x, int y) { c->fillRect(x - 1, y - 1, 3, 3, nodeCol); };
-
-    /* CPU - RAM */
-    c->drawLine(CPU_CX + CPU_R, CPU_CY, RAM_CX - RAM_R, RAM_CY, traceCol);
-    via(CPU_CX + CPU_R, CPU_CY);
-    via(RAM_CX - RAM_R, RAM_CY);
-
-    /* RAM - GPU (right-angle route) */
-    c->drawLine(RAM_CX, RAM_CY + RAM_R, RAM_CX, 159, traceCol);
-    c->drawLine(RAM_CX, 159, 153, 159, traceCol);
-    c->drawLine(153, 159, GPU_CX + 35, GPU_CY - 28, traceCol);
-    via(RAM_CX, RAM_CY + RAM_R);
-    via(RAM_CX, 159);
-    via(153, 159);
-    via(GPU_CX + 35, GPU_CY - 28);
-
-    /* GPU - CPU (right-angle route) */
-    c->drawLine(GPU_CX - 35, GPU_CY - 28, 87, 159, traceCol);
-    c->drawLine(87, 159, CPU_CX, 159, traceCol);
-    c->drawLine(CPU_CX, 159, CPU_CX, CPU_CY + CPU_R, traceCol);
-    via(GPU_CX - 35, GPU_CY - 28);
-    via(87, 159);
-    via(CPU_CX, 159);
-    via(CPU_CX, CPU_CY + CPU_R);
+    char t[8];
+    snprintf(t, sizeof(t), "%d", temp);
+    uint32_t col = _temp_color(temp);
+    CYBER::text(c, t, x, y, CYBER::FONT_SMALL(), col, textdatum_t::middle_left);
+    int w = c->textWidth(t);
+    c->drawCircle(x + w + 3, y - 4, 2, col);
+    CYBER::text(c, "C", x + w + 7, y, CYBER::FONT_SMALL(), col, textdatum_t::middle_left);
 }
 
-/* One gauge: the established segmented pip-ring (progressRingAt), big
- * percentage, label, and — when available — a temp badge or subinfo badge. */
-static void _draw_gauge(LGFX_Sprite* c, int cx, int cy, int r, const char* label,
-                        int pct, uint32_t col, int temp, const char* subinfo)
+/* "NVIDIA GeForce RTX 4070" -> "RTX 4070": the vendor words don't fit and
+ * don't help. */
+static const char* _short_gpu(const char* name)
 {
-    float frac = (pct < 0) ? 0.0f : pct / 100.0f;
-    CYBER::progressRingAt(c, cx, cy, r, frac, col);
-
-    c->setFont(&fonts::Font0);
-    c->setTextDatum(textdatum_t::middle_center);
-
-    c->setTextSize(2);
-    if (pct >= 0)
+    static const char* PREFIX[] = {"NVIDIA ", "GeForce ", "AMD ", "Radeon ", "Intel(R) ", "Intel "};
+    bool again = true;
+    while (again)
     {
-        char v[8]; snprintf(v, sizeof(v), "%d%%", pct);
-        c->setTextColor(CYBER::WHITE);
-        c->drawString(v, cx, cy - 13);
+        again = false;
+        for (const char* p : PREFIX)
+        {
+            size_t n = strlen(p);
+            if (strncmp(name, p, n) == 0) { name += n; again = true; }
+        }
     }
-    else
-    {
-        c->setTextColor(CYBER::blend(CYBER::SLATE, CYBER::BG, 0.8f));
-        c->drawString("N/A", cx, cy - 13);
-    }
+    return name;
+}
 
-    c->setTextSize(1);
-    c->setTextColor(CYBER::blend(col, CYBER::WHITE, 0.15f));
-    c->drawString(label, cx, cy + 7);
+static void _draw_row(LGFX_Sprite* c, int y, const char* label, int pct, uint32_t col,
+                      int temp, const char* subinfo)
+{
+    CYBER::text(c, label, ROW_X0, y, CYBER::FONT_LABEL(), col, textdatum_t::middle_left);
 
+    int sy = y + 29;
     if (temp >= 0)
+        _draw_temp(c, ROW_X0, sy, temp);
+    if (subinfo && subinfo[0])
+        CYBER::text(c, subinfo, ROW_X1, sy, CYBER::FONT_SMALL(), CYBER::SLATE, textdatum_t::middle_right);
+
+    char v[8];
+    if (pct >= 0) snprintf(v, sizeof(v), "%d%%", pct);
+    else          snprintf(v, sizeof(v), "N/A");
+    CYBER::text(c, v, ROW_X1, y, CYBER::FONT_VALUE(), pct >= 0 ? CYBER::WHITE : CYBER::SLATE,
+                textdatum_t::middle_right);
+
+    /* Bar: dim track, accent fill, bright leading tick. */
+    int bw = ROW_X1 - ROW_X0, by = y + 14, bh = 5;
+    c->fillRoundRect(ROW_X0, by, bw, bh, bh / 2, CYBER::blend(CYBER::TRACK, CYBER::BG, 0.9f));
+    if (pct > 0)
     {
-        char t[8]; snprintf(t, sizeof(t), "%dC", temp);
-        uint32_t tcol = (temp < 60) ? CYBER::GREEN : ((temp < 80) ? CYBER::AMBER : CYBER::RED);
-        _badge(c, cx, cy + 16, t, tcol);
+        int fw = bw * (pct > 100 ? 100 : pct) / 100;
+        if (fw < bh) fw = bh;
+        c->fillRoundRect(ROW_X0, by, fw, bh, bh / 2, col);
+        c->fillRect(ROW_X0 + fw - 2, by, 2, bh, CYBER::WHITE);
     }
-    else if (subinfo && subinfo[0])
+}
+
+/* Small chip glyph: a square die with pins, for the waiting screen. */
+static void _chip_glyph(LGFX_Sprite* c, int cx, int cy, int s, uint32_t col)
+{
+    c->drawRoundRect(cx - s / 2, cy - s / 2, s, s, 3, col);
+    c->drawRoundRect(cx - s / 2 + 5, cy - s / 2 + 5, s - 10, s - 10, 2, CYBER::blend(col, CYBER::BG, 0.6f));
+    for (int k = -1; k <= 1; k++)
     {
-        _badge(c, cx, cy + 16, subinfo, CYBER::SLATE);
+        int o = k * s / 4;
+        c->drawFastHLine(cx - s / 2 - 5, cy + o, 5, col);
+        c->drawFastHLine(cx + s / 2, cy + o, 5, col);
+        c->drawFastVLine(cx + o, cy - s / 2 - 5, 5, col);
+        c->drawFastVLine(cx + o, cy + s / 2, 5, col);
     }
 }
 
 static void _draw_no_data_panel(LGFX_Sprite* c)
 {
-    int x = 24, y = 64, w = 192, h = 112;
-    c->fillRoundRect(x, y, w, h, 10, CYBER::blend(CYBER::BG, CYBER::WHITE, 0.06f));
-    c->drawRoundRect(x, y, w, h, 10, CYBER::blend(CYBER::CYAN, CYBER::BG, 0.4f));
+    _chip_glyph(c, 120, 62, 26, CYBER::CYAN);
 
-    /* pulsing chip glyph: a small square die with corner pins, standing in
-     * for "no telemetry chip connected yet" */
-    int ccx = 120, ccy = 86, s = 15;
-    uint32_t chipCol = CYBER::blend(CYBER::CYAN, CYBER::BG, 0.85f);
-    uint32_t pinCol  = CYBER::blend(CYBER::CYAN, CYBER::BG, 0.6f);
-    c->drawRoundRect(ccx - s / 2, ccy - s / 2, s, s, 2, chipCol);
-    for (int dx = -1; dx <= 1; dx += 2)
-        for (int dyf = 0; dyf < 2; dyf++)
-        {
-            int dy = dyf == 0 ? -(int)(s * 0.35f) : (int)(s * 0.35f);
-            c->drawLine(ccx + dx * s / 2, ccy + dy, ccx + dx * (s / 2 + 4), ccy + dy, pinCol);
-        }
+    CYBER::text(c, "PC stats", 120, 102, &fonts::Font4, CYBER::WHITE);
+    CYBER::text(c, "waiting for data...", 120, 128, CYBER::FONT_SMALL(), CYBER::blend(CYBER::CYAN, CYBER::WHITE, 0.4f));
 
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
-    c->setTextDatum(textdatum_t::middle_center);
-    c->setTextColor(CYBER::WHITE);
-    c->drawString("AWAITING DATA", 120, 112);
+    c->drawFastHLine(60, 146, 120, CYBER::blend(CYBER::CYAN, CYBER::BG, 0.35f));
 
-    c->setTextColor(CYBER::SLATE);
-    c->drawString("BLE   M5DIAL-001", 120, 132);
-    c->drawString("USB   sysstat_sender.py <port>", 120, 150);
-
-    char addr[48];
-    snprintf(addr, sizeof(addr), "ADDR  %s", PC_LINK::bleAddress());
-    c->setTextColor(CYBER::blend(CYBER::SLATE, CYBER::BG, 0.8f));
-    c->drawString(addr, 120, 168);
+    CYBER::text(c, "BLE  M5DIAL-001", 120, 162, &fonts::Font2, CYBER::SLATE);
+    CYBER::text(c, "or USB: sysstat_sender.py", 120, 180, &fonts::Font2, CYBER::SLATE);
+    CYBER::text(c, PC_LINK::bleAddress(), 120, 198, &fonts::Font0, CYBER::DIMTEXT);
 }
 
 void PcStats::_render()
 {
     LGFX_Sprite* c = _data.hal->canvas;
     c->fillScreen(CYBER::BG);
-    for (int y = 0; y < 240; y += 4) c->drawFastHLine(0, y, 240, CYBER::SCANLINE);
 
     auto& s = PC_LINK::pcStats;
-
-    c->setFont(&fonts::Font0);
-    c->setTextSize(1);
-    c->setTextDatum(textdatum_t::middle_center);
-    c->setTextColor(CYBER::CYAN);
-    c->drawString("PC STATS", 108, 20);
-    c->fillCircle(163, 20, 3, CYBER::GREEN);
 
     if (!s.valid)
     {
@@ -175,10 +135,11 @@ void PcStats::_render()
         return;
     }
 
-    _draw_circuit_board(c);
-    _draw_gauge(c, CPU_CX, CPU_CY, CPU_R, "CPU", s.cpu_pct, CYBER::CYAN,    s.cpu_temp, nullptr);
-    _draw_gauge(c, RAM_CX, RAM_CY, RAM_R, "RAM", s.ram_pct, CYBER::GREEN,   -1,         s.ram_str);
-    _draw_gauge(c, GPU_CX, GPU_CY, GPU_R, "GPU", s.gpu_pct, CYBER::MAGENTA, s.gpu_temp, s.gpu_name);
+    CYBER::text(c, "PC stats", 120, 30, CYBER::FONT_LABEL(), CYBER::blend(CYBER::CYAN, CYBER::WHITE, 0.75f));
+
+    _draw_row(c, ROW_Y[0], "CPU", s.cpu_pct, CYBER::CYAN,    s.cpu_temp, nullptr);
+    _draw_row(c, ROW_Y[1], "RAM", s.ram_pct, CYBER::GREEN,   -1,         s.ram_str);
+    _draw_row(c, ROW_Y[2], "GPU", s.gpu_pct, CYBER::MAGENTA, s.gpu_temp, _short_gpu(s.gpu_name));
 
     _canvas_update();
 }

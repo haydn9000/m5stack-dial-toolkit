@@ -19,7 +19,7 @@ using namespace MOONCAKE::USER_APP;
 
 
 static const uint32_t PHASE_SECONDS[3] = { 25 * 60, 5 * 60, 15 * 60 };
-static const char*    PHASE_LABEL[3]   = { "FOCUS", "BREAK", "LONG BREAK" };
+static const char*    PHASE_LABEL[3]   = { "Focus", "Break", "Long break" };
 static const uint32_t PHASE_COLOR[3]   = { CYBER::CYAN, CYBER::GREEN, CYBER::AMBER };
 static const int      WORK_TARGET      = 4;
 
@@ -106,9 +106,9 @@ void Pomodoro::_render()
 
     const char* code;
     const char* hint;
-    if (_data.run == POMODORO::RUNNING)      { code = "RUN"; hint = "PRESS = PAUSE   HOLD = EXIT"; }
-    else if (_data.run == POMODORO::PAUSED)  { code = "PSE"; hint = "PRESS = RESUME   TURN = PHASE"; }
-    else                                     { code = "RDY"; hint = "PRESS = START   TURN = PHASE"; }
+    if (_data.run == POMODORO::RUNNING)      { code = "Running"; hint = "Press to pause   Hold to exit"; }
+    else if (_data.run == POMODORO::PAUSED)  { code = "Paused"; hint = "Press to resume   Turn to skip"; }
+    else                                     { code = "Ready"; hint = "Press to start   Turn to skip"; }
 
     uint32_t denom = (_data.run == POMODORO::IDLE) ? _phase_duration(_data.phase)
                                                    : _data.duration_ms;
@@ -120,7 +120,7 @@ void Pomodoro::_render()
     snprintf(big, sizeof(big), "%02u:%02u", (unsigned)m, (unsigned)s);
 
     LGFX_Sprite* cv = _data.hal->canvas;
-    CYBER::hudChrome(cv, PHASE_LABEL[_data.phase], code, accent, bootMs);
+    CYBER::hudChrome(cv, PHASE_LABEL[_data.phase], code, accent, bootMs, _data.run == POMODORO::RUNNING);
     CYBER::progressRing(cv, ring * CYBER::bootProgress(bootMs), accent);
 
     char shown[12];

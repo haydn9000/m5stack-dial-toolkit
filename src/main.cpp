@@ -8,6 +8,7 @@
 #include "apps/app.h"
 #include "apps/launcher/launcher.h"
 #include "apps/utilities/pc_link/pc_link.h"
+#include "apps/utilities/time_sync/time_sync.h"
 
 static HAL::HAL hal;
 
@@ -18,6 +19,9 @@ void setup()
 
     /* PC Stats / Claude Usage data channel (BLE + USB serial) */
     PC_LINK::init();
+
+    /* Keep the RTC on internet time (background task; no-op until set up) */
+    TIME_SYNC::begin(&hal);
 }
 
 void loop()

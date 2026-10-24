@@ -14,7 +14,7 @@ namespace PC_LINK
     static const char* TAG = "pc_link";
 
     #define PC_LINK_DEVICE_NAME  "M5DIAL-001"
-    #define PC_LINK_SERVICE_UUID "4d354449-414c-0000-0000-000000000001"
+    #define PC_LINK_SERVICE_UUID BLE_SERVICE_UUID
     #define PC_LINK_RX_CHAR_UUID "4d354449-414c-0000-0000-000000000002"
 
     ClaudeUsageData claudeUsage;
@@ -24,9 +24,8 @@ namespace PC_LINK
 
     /* ---- BLE ---- */
     static NimBLEServer* s_server        = nullptr;
-    static bool          s_connected     = false;
-    static bool          s_wasConnected  = false;
     static bool          s_active        = false;   // advertising desired by the open app
+    static uint32_t      s_lastAdvTry    = 0;
 
     static volatile bool s_blePending = false;
     static char          s_bleBuf[512];
@@ -44,12 +43,6 @@ namespace PC_LINK
                 s_blePending  = true;
             }
         }
-    };
-
-    class ServerCallbacks : public NimBLEServerCallbacks
-    {
-        void onConnect(NimBLEServer*)    override { s_connected = true;  }
-        void onDisconnect(NimBLEServer*) override { s_connected = false; }
     };
 
     /* ---- Parsing (hand-rolled, no JSON library — mirrors wiodeck) ---- */
@@ -160,6 +153,8 @@ namespace PC_LINK
     {
         while (Serial.available())
         {
+            /* '~' lines belong to the DEV_REMOTE debug hook — leave them. */
+            if (serialPos == 0 && Serial.peek() == '~') break;
             char c = (char)Serial.read();
             if (c == '\n' || c == '\r')
             {
@@ -189,13 +184,16 @@ namespace PC_LINK
             dispatch(s_bleBuf);
         }
 
-        /* Restart advertising after a disconnect, only while a screen wants it. */
-        if (!s_connected && s_wasConnected && s_active)
+        /* Advertise while a screen wants data and no sender is connected.
+         * Polled rather than driven by server callbacks: BleKeyboard replaces
+         * the shared server's callbacks when the Volume app first opens. */
+        if (s_active && s_server && s_server->getConnectedCount() == 0 &&
+            !NimBLEDevice::getAdvertising()->isAdvertising() &&
+            millis() - s_lastAdvTry > 1000)
         {
-            delay(500);
+            s_lastAdvTry = millis();
             NimBLEDevice::startAdvertising();
         }
-        s_wasConnected = s_connected;
     }
 
     /* Builds the NimBLE server/service/characteristic + advertising config.
@@ -203,12 +201,25 @@ namespace PC_LINK
      * another app (e.g. BLE Server) has torn the whole NimBLE stack down
      * via NimBLEDevice::deinit() since — mirrors BLE_Volume's
      * !NimBLEDevice::getInitialized() re-init guard. */
+    /* Name + advert the senders look for ("M5DIAL-001" + our service). */
+    static void _advertise_as_pc_link()
+    {
+        NimBLEDevice::setDeviceName(PC_LINK_DEVICE_NAME);
+        NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+        adv->reset();   // re-reads the device name; keeps the UUID list
+        adv->removeServiceUUID(NimBLEUUID((uint16_t)0x1812));   // BLE Volume's HID
+        adv->removeServiceUUID(NimBLEUUID(PC_LINK_SERVICE_UUID));
+        adv->addServiceUUID(PC_LINK_SERVICE_UUID);
+        adv->setScanResponse(true);
+        adv->setMinPreferred(0x06);
+        adv->setMinPreferred(0x12);
+    }
+
     static void _ble_setup()
     {
         NimBLEDevice::init(PC_LINK_DEVICE_NAME);
 
         s_server = NimBLEDevice::createServer();
-        s_server->setCallbacks(new ServerCallbacks());
 
         NimBLEService* svc = s_server->createService(PC_LINK_SERVICE_UUID);
         NimBLECharacteristic* rxChar = svc->createCharacteristic(
@@ -218,11 +229,7 @@ namespace PC_LINK
         rxChar->setCallbacks(new RxCallbacks());
         svc->start();
 
-        NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-        adv->addServiceUUID(PC_LINK_SERVICE_UUID);
-        adv->setScanResponse(true);
-        adv->setMinPreferred(0x06);
-        adv->setMinPreferred(0x12);
+        _advertise_as_pc_link();
 
         ESP_LOGI(TAG, "ble setup done, device name %s", PC_LINK_DEVICE_NAME);
     }
@@ -250,6 +257,7 @@ namespace PC_LINK
                 ESP_LOGW(TAG, "NimBLE was deinitialized; re-running ble setup");
                 _ble_setup();
             }
+            _advertise_as_pc_link();
             NimBLEDevice::startAdvertising();
         }
         else

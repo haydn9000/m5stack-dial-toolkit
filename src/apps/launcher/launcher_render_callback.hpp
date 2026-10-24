@@ -10,6 +10,8 @@
  */
 #pragma once
 #include "launcher_icons/launcher_icons.h"
+#include "launcher_icons/launcher_glyphs.h"
+#include "../utilities/cyber_ui/cyber_ui.hpp"
 #include <iostream>
 #include <array>
 
@@ -52,35 +54,67 @@ static std::array<uint32_t, ICON_NUM> icon_color_list = {
     0xFF003C,  // Pomodoro     - alert red
     0xFF9E00,  // Brightness   - warm amber
     0xD97757,  // Claude Usage - coral
-    0x00F0FF,  // PC Stats     - electric cyan
-    0x3A6B8C   // More         - steel blue
+    0xA98BFF,  // PC Stats     - lavender (cyan is the watch's)
+    0x8FB0C2   // More         - slate
 };
-/* Icon tag */
+/* Icon tag: app name, then a few words on what it does */
 static std::array<std::string, ICON_NUM * 2> icon_tag_list = {
-    "WATCH", "",
-    "VOL", "CTRL",
-    "TIMER", "",
-    "STOPWATCH", "",
-    "POMODORO", "",
-    "BRIGHTNESS", "SET",
-    "CLAUDE", "USAGE",
-    "PC", "STATS",
-    "MORE", ""
+    "Watch",      "Time and date",
+    "Volume",     "Media volume",
+    "Timer",      "Count down",
+    "Stopwatch",  "Count up",
+    "Pomodoro",   "Focus sessions",
+    "Brightness", "Screen light",
+    "Claude",     "Usage limits",
+    "PC stats",   "CPU, RAM, GPU",
+    "More",       "Tools and settings"
 };
-/* Icon pic */
-static std::array<const uint16_t*, ICON_NUM> icon_pic_list = {
-    image_data_icon_rtc,        // Watch Face (clock icon)
-    image_data_icon_volume,
-    image_data_icon_timer,
-    image_data_icon_stopwatch,
-    image_data_icon_pomodoro,
-    image_data_icon_brigntness,
-    image_data_icon_claude,
-    image_data_icon_pcstats,
-    image_data_icon_more
+/* Line-icon masks (Tabler Icons, tools/gen_tabler_icons.py) */
+static std::array<const uint8_t*, ICON_NUM> icon_glyph_list = {
+    launcher_glyph_watch,
+    launcher_glyph_volume,
+    launcher_glyph_timer,
+    launcher_glyph_stopwatch,
+    launcher_glyph_pomodoro,
+    launcher_glyph_brightness,
+    launcher_glyph_claude,
+    launcher_glyph_pcstats,
+    launcher_glyph_more
 };
-/* Sprite to render icon with transparency */
-static LGFX_Sprite icon_sprite_list[ICON_NUM];
+/* Icons are drawn straight from their masks every frame rather than cached
+ * in sprites: this board has no PSRAM, and 18 cached 42x42 sprites (~63KB)
+ * left too little internal RAM for WiFi to start (TIME_SYNC). */
+
+/* Dark disc behind an idle icon */
+inline uint32_t icon_idle_disc(uint32_t color) { return CYBER::blend(color, CYBER::BG, 0.18f); }
+
+/* Draw a glyph mask centred on (cx, cy): ink blended over the disc it sits
+ * on, so the antialiased edge matches; pixels outside the glyph untouched. */
+inline void icon_draw(LovyanGFX* dst, const uint8_t* mask, int cx, int cy, uint32_t ink, uint32_t disc)
+{
+    int x0 = cx - 21, y0 = cy - 21;
+    for (int i = 0; i < 42 * 42; i++)
+    {
+        if (mask[i] < 24) continue;
+        dst->drawPixel(x0 + i % 42, y0 + i / 42, CYBER::blend(ink, disc, mask[i] / 255.0f));
+    }
+}
+
+/* Tint a glyph mask into a 42x42 sprite with TFT_BLACK as the clear colour —
+ * the icon handed to apps that take one (GUI_Base). */
+inline void icon_tint(LGFX_Sprite& s, const uint8_t* mask, uint32_t ink, uint32_t disc)
+{
+    s.createSprite(42, 42);
+    s.fillSprite(TFT_BLACK);
+    for (int i = 0; i < 42 * 42; i++)
+    {
+        if (mask[i] < 24) continue;
+        uint32_t c = CYBER::blend(ink, disc, mask[i] / 255.0f);
+        if (lgfx::color565((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF) == 0)
+            c = 0x080808;   // keep near-black ink opaque, not keyed out
+        s.drawPixel(i % 42, i / 42, c);
+    }
+}
 
 
 struct LauncherRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
@@ -104,8 +138,8 @@ struct LauncherRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
             /* Clear screen */
             _canvas->fillScreen(THEME_COLOR_BG);
 
-            /* Draw selector */
-            _canvas->fillSmoothCircle(selector.x, selector.y, SELECTOR_RADIUS, SELECTOR_COLOR);
+            /* No selector dot: the enlarged, filled icon marks the selection
+             * and the dot only collided with the centre label. */
             // printf("%d %d\n", selector.x, selector.y);
             // printf("%d %d\n", menuItemList[selector.targetItem]->x, menuItemList[selector.targetItem]->y);
 
@@ -120,15 +154,18 @@ struct LauncherRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
                 x = (menuItemList[i]->x - 120) * icon_r / 120 + 120;
                 y = (menuItemList[i]->y - 120) * icon_r / 120 + 120;
 
+                uint32_t col = icon_list[i].color;
                 if (i == selector.targetItem)
                 {
-                    _canvas->fillSmoothCircle(x, y, selector.width + ICON_SELECTED_R_OFFSET, icon_list[i].color);
-                    icon_sprite_list[i].pushRotateZoom(_canvas, x, y, 0, 1.1, 1.1, TFT_BLACK);
+                    _canvas->fillSmoothCircle(x, y, selector.width + ICON_SELECTED_R_OFFSET, col);
+                    icon_draw(_canvas, icon_glyph_list[i], x, y, CYBER::BG, col);
                 }
                 else
                 {
-                    _canvas->fillSmoothCircle(x, y, ICON_RADIUS, icon_list[i].color);
-                    icon_sprite_list[i].pushRotateZoom(_canvas, x, y, 0, 1, 1, TFT_BLACK);
+                    uint32_t disc = icon_idle_disc(col);
+                    _canvas->fillSmoothCircle(x, y, ICON_RADIUS, disc);
+                    _canvas->drawCircle(x, y, ICON_RADIUS, CYBER::blend(col, CYBER::BG, 0.45f));
+                    icon_draw(_canvas, icon_glyph_list[i], x, y, col, disc);
                 }
             }
 
@@ -143,23 +180,15 @@ struct LauncherRender_CB_t : public SMOOTH_MENU::SimpleMenuCallback_t
              * canvas at a larger size, which would blow up the tag text. */
             _canvas->setTextSize(1);
 
-            /* If pointing a icon */
+            /* If pointing a icon: its name, tinted with its colour, and what
+             * it does underneath */
             if (selector.targetItem < icon_list.size())
             {
-                _canvas->setFont(GUI_FONT_CN_BIG);
-                _canvas->setTextColor(ICON_TAG_COLOR);
-
-                /* Darw tag with offset */
-                _canvas->drawCenterString(
-                    icon_list[selector.targetItem].tag_up.c_str(),
-                    icon_tag_x,
-                    icon_tag_y + ICON_TAG_UP_OFFSET
-                );
-                _canvas->drawCenterString(
-                    icon_list[selector.targetItem].tag_down.c_str(),
-                    icon_tag_x,
-                    icon_tag_y + ICON_TAG_DOWN_OFFSET
-                );
+                const Icon_t& icon = icon_list[selector.targetItem];
+                CYBER::text(_canvas, icon.tag_up.c_str(), 120, 110,
+                            CYBER::FONT_VALUE(), CYBER::blend(icon.color, CYBER::WHITE, 0.55f));
+                CYBER::text(_canvas, icon.tag_down.c_str(), 120, 136,
+                            CYBER::FONT_SMALL(), CYBER::SLATE);
             }
             else 
             {

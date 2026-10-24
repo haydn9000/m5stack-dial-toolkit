@@ -1,7 +1,7 @@
 /**
  * @file cyber_ui.hpp
  * @brief Shared cyberpunk-styled drawing helpers for the time apps
- *        (stopwatch / timer / pomodoro).
+ *        (stopwatch / timer / pomodoro / set time) and the monitor apps.
  *
  * Header-only. Only depends on LovyanGFX. All drawing targets an
  * LGFX_Sprite canvas (the 240x240 round display). Colours are 24-bit RGB
@@ -50,54 +50,31 @@ namespace CYBER
         return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
     }
 
-    /* Asymmetric HUD frame: a bold double bracket upper-left, a thin bracket
-     * lower-right and a short telemetry tick rail on the left, plus the neon
-     * outer rim. Everything sits inside the ring (r < 100) so it never collides
-     * with the gauge — a deliberately off-balance "terminal" frame. */
-    inline void hudFrame(LGFX_Sprite* c, uint32_t accent)
+    /* Type scale for the round 240px panel. Everything that has to be read
+     * is DejaVu (a clean sans with real lowercase) at 12/18/24px; Font7's
+     * seven-segment digits are kept for the hero readout only. Font0 (6x8)
+     * is too small to read at arm's length and is not used for content. */
+    inline const lgfx::IFont* FONT_SMALL()  { return &fonts::DejaVu12; }
+    inline const lgfx::IFont* FONT_LABEL()  { return &fonts::DejaVu18; }
+    inline const lgfx::IFont* FONT_VALUE()  { return &fonts::DejaVu24; }
+
+    inline void text(LGFX_Sprite* c, const char* t, int x, int y, const lgfx::IFont* f,
+                     uint32_t col, textdatum_t datum = textdatum_t::middle_center)
     {
-        const uint32_t bold  = blend(accent, BG, 0.85f);
-        const uint32_t mid   = blend(accent, BG, 0.5f);
-        const uint32_t faint = blend(accent, BG, 0.35f);
-        const uint32_t rail  = blend(DIMTEXT, BG, 0.9f);
-
-        /* Bold double bracket, upper-left (2px) */
-        c->drawLine(40, 74, 40, 58, bold);  c->drawLine(41, 74, 41, 58, bold);
-        c->drawLine(40, 58, 66, 58, bold);  c->drawLine(40, 59, 66, 59, bold);
-        c->drawLine(44, 78, 44, 62, faint); c->drawLine(44, 62, 70, 62, faint);  // inner thin
-
-        /* Thin single bracket, lower-right */
-        c->drawLine(200, 166, 200, 182, mid);
-        c->drawLine(200, 182, 174, 182, mid);
-
-        /* Left telemetry tick rail + label */
-        for (int i = 0; i < 6; i++)
-        {
-            int yy = 100 + i * 8;
-            c->drawFastHLine(30, yy, (i % 3 == 0) ? 9 : 5, rail);
-        }
-        c->setFont(&fonts::Font0);
+        c->setFont(f);
         c->setTextSize(1);
-        c->setTextColor(rail);
-        c->setTextDatum(textdatum_t::middle_left);
-        c->drawString("SIG", 30, 90);
+        c->setTextColor(col);
+        c->setTextDatum(datum);
+        c->drawString(t, x, y);
     }
 
-    /* Draw the dark HUD background: gradient fill, CRT scanlines, ring track
-     * and the targeting frame tinted with the supplied accent colour. */
+    /* Plain dark ground. The scanlines, gradient and corner brackets that used
+     * to live here competed with the readout, so the ring and the digits now
+     * carry the look on their own. `accent` is kept for API compatibility. */
     inline void background(LGFX_Sprite* c, uint32_t accent = CYAN)
     {
-        /* Subtle vertical gradient: faint accent tint at top -> black bottom */
-        uint32_t top = blend(accent, BG, 0.10f);
-        for (int y = 0; y < 240; y += 2)
-            c->fillRect(0, y, 240, 2, blend(top, BG, y / 239.0f));
-
-        for (int y = 0; y < 240; y += 4)
-            c->drawFastHLine(0, y, 240, SCANLINE);
-
-        /* No solid ring track — the gauge pips float on black (matches the
-         * design prototype). The rim line is drawn by progressRing(). */
-        hudFrame(c, accent);
+        (void)accent;
+        c->fillScreen(BG);
     }
 
     /* Segmented progress ring — 60 crisp pips floating on black, sweeping from
@@ -171,76 +148,37 @@ namespace CYBER
     /* Title text near the top, inside the ring. */
     inline void title(LGFX_Sprite* c, const char* t, uint32_t col)
     {
-        c->setFont(&fonts::Font0);
-        c->setTextSize(2);
-        c->setTextColor(col);
-        c->setTextDatum(textdatum_t::middle_center);
-        c->drawString(t, CX, 62);
+        text(c, t, CX, 56, FONT_LABEL(), col);
     }
 
     /* Small subtitle just under the title. */
     inline void subtitle(LGFX_Sprite* c, const char* t, uint32_t col)
     {
-        c->setFont(&fonts::Font0);
-        c->setTextSize(1);
-        c->setTextColor(col);
-        c->setTextDatum(textdatum_t::middle_center);
-        c->drawString(t, CX, 84);
+        text(c, t, CX, 80, FONT_SMALL(), col);
     }
 
-    /* Big 7-segment time readout in the centre with a glitchy cyan/magenta
-     * chromatic-aberration shadow: a steady ±3 split that periodically tears
-     * wider and jitters vertically for a digital-glitch flicker. */
-    inline void bigTime(LGFX_Sprite* c, const char* t, uint32_t col, float glitch = 1.0f)
+    /* Big 7-segment readout in the centre. Drawn solid: the old cyan/magenta
+     * chromatic shadow looked the part but blurred the digits. */
+    inline void bigTime(LGFX_Sprite* c, const char* t, uint32_t col)
     {
-        c->setFont(&fonts::Font7);
-        c->setTextSize(1);
-        c->setTextDatum(textdatum_t::middle_center);
-
-        /* Steady chromatic shadow, with an occasional brief horizontal shimmer.
-         * `glitch` scales it: 0 = steady only, 1 = default, >1 = livelier. */
-        uint32_t ph = millis();
-        int gx = 3;
-        if (glitch > 0.01f)
-        {
-            uint32_t window = (uint32_t)(70.0f * glitch);   // ms of shimmer per 3s
-            if ((ph % 3000u) < window)
-                gx = 4 + (int)((ph / 40u) % 2u);            // 4..5, momentary
-        }
-
-        c->setTextColor(blend(MAGENTA, BG, 0.62f));
-        c->drawString(t, CX + gx, 118);
-        c->setTextColor(blend(CYAN, BG, 0.62f));
-        c->drawString(t, CX - gx, 118);
-        /* Bright core */
-        c->setTextColor(col);
-        c->drawString(t, CX, 118);
+        text(c, t, CX, 118, &fonts::Font7, col);
     }
 
-    /* Small monospace text under the big readout (e.g. centiseconds). */
-    inline void smallReadout(LGFX_Sprite* c, const char* t, uint32_t col, int y = 160)
+    /* Secondary readout under the big one (e.g. centiseconds). */
+    inline void smallReadout(LGFX_Sprite* c, const char* t, uint32_t col, int y = 162)
     {
-        c->setFont(&fonts::Font0);
-        c->setTextSize(2);
-        c->setTextColor(col);
-        c->setTextDatum(textdatum_t::middle_center);
-        c->drawString(t, CX, y);
+        text(c, t, CX, y, FONT_VALUE(), col);
     }
 
-    /* Bottom hint line, inside the ring. A hint may pack two actions separated
-     * by a run of spaces (e.g. "PRESS = PAUSE   HOLD = EXIT"); in that case it
-     * is split onto two stacked lines so it stays clear of the ring. */
-    inline void hint(LGFX_Sprite* c, const char* t, uint32_t col = DIMTEXT)
+    /* Bottom hint, inside the ring. A hint may pack two actions separated by
+     * a run of spaces ("Press to pause   Hold to exit"); they are stacked on
+     * two lines so each stays inside the round edge. */
+    inline void hint(LGFX_Sprite* c, const char* t, uint32_t col = SLATE)
     {
-        c->setFont(&fonts::Font0);
-        c->setTextSize(1);
-        c->setTextColor(col);
-        c->setTextDatum(textdatum_t::middle_center);
-
         const char* sep = strstr(t, "  ");   // run of 2+ spaces = action divider
         if (sep == nullptr)
         {
-            c->drawString(t, CX, 188);
+            text(c, t, CX, 186, FONT_SMALL(), col);
             return;
         }
 
@@ -253,8 +191,8 @@ namespace CYBER
         const char* p = sep;
         while (*p == ' ') p++;
 
-        c->drawString(a, CX, 184);
-        c->drawString(p, CX, 200);
+        text(c, a, CX, 180, FONT_SMALL(), col);
+        text(c, p, CX, 197, FONT_SMALL(), blend(col, BG, 0.7f));
     }
 
     /* ---------------- redesigned HUD language (shared by the time apps) ------ */
@@ -277,38 +215,27 @@ namespace CYBER
         c->drawLine(x, y + cut,       x + cut, y,           col);   // TL diag
     }
 
-    /* Chamfered header tab, centred, with the screen name and a yellow highlight
-     * underline that grows with `frac` — the boot-in wipes it in. Matches the
-     * design/timeapp-hud.html header (x62,w116). */
+    /* Screen name, centred near the top, with a yellow underline that grows
+     * with `frac` — the boot-in wipes it in. */
     inline void header(LGFX_Sprite* c, const char* name, uint32_t accent, float frac = 1.0f)
     {
-        const int x = 62, y = 44, w = 116, h = 17, cut = 5;
-        c->fillRect(x + 1, y + 1, w - 2, h - 2, blend(accent, BG, 0.10f));
-        chamferOutline(c, x, y, w, h, cut, blend(accent, BG, 0.55f));
-        c->setFont(&fonts::Font0);
-        c->setTextSize(1);
-        c->setTextColor(blend(accent, BG, 0.95f));
-        c->setTextDatum(textdatum_t::middle_center);
-        c->drawString(name, CX, y + h / 2);
+        text(c, name, CX, 50, FONT_LABEL(), blend(accent, WHITE, 0.75f));
         if (frac < 0) frac = 0;
         if (frac > 1) frac = 1;
-        c->fillRect(x + 4, y + h - 1, (int)((w - 8) * frac), 2, AMBER);   // yellow highlight
+        int w = c->textWidth(name);
+        c->fillRect(CX - w / 2, 62, (int)(w * frac), 2, AMBER);
     }
 
-    /* Status chip (upper-right, tabbed onto the header) with a blinking dot.
-     * `code` is a short status like "RUN" / "PSE" / "END". */
-    inline void chip(LGFX_Sprite* c, const char* code, uint32_t accent)
+    /* State line under the header: a dot and a word ("Running", "Paused").
+     * The dot pulses while `live` so a running clock reads as running. */
+    inline void chip(LGFX_Sprite* c, const char* state, uint32_t accent, bool live = false)
     {
-        const int x = 148, y = 58, w = 44, h = 16, cut = 4;
-        c->fillRect(x + 1, y + 1, w - 2, h - 2, blend(accent, BG, 0.12f));
-        chamferOutline(c, x, y, w, h, cut, blend(accent, BG, 0.6f));
-        bool on = ((millis() / 400) % 2) == 0;
-        c->fillCircle(x + 9, y + h / 2, 2, on ? accent : blend(accent, BG, 0.35f));
-        c->setFont(&fonts::Font0);
-        c->setTextSize(1);
-        c->setTextColor(blend(accent, BG, 0.9f));
-        c->setTextDatum(textdatum_t::middle_left);
-        c->drawString(code, x + 16, y + h / 2);
+        c->setFont(FONT_SMALL());
+        int w = c->textWidth(state) + 12;
+        int x = CX - w / 2;
+        bool on = !live || ((millis() / 500) % 2) == 0;
+        c->fillSmoothCircle(x + 3, 77, 3, on ? accent : blend(accent, BG, 0.35f));
+        text(c, state, x + 12, 77, FONT_SMALL(), accent, textdatum_t::middle_left);
     }
 
     /* One-shot scanline sweep overlay for the boot-in (frac 0..1 -> top..bottom). */
@@ -337,15 +264,15 @@ namespace CYBER
         dst[i] = '\0';
     }
 
-    /* Full HUD chrome for a time app: dark ground + asym frame + header tab +
-     * status chip, plus the scanline sweep while booting. The caller then draws
-     * the ring (scaled by bootProgress) and readout. */
-    inline void hudChrome(LGFX_Sprite* c, const char* name, const char* code,
-                          uint32_t accent, uint32_t bootMs)
+    /* Full HUD chrome for a time app: dark ground + header + state line,
+     * plus the scanline sweep while booting. The caller then draws the ring
+     * (scaled by bootProgress) and readout. */
+    inline void hudChrome(LGFX_Sprite* c, const char* name, const char* state,
+                          uint32_t accent, uint32_t bootMs, bool live = false)
     {
         background(c, accent);
         header(c, name, accent, bootProgress(bootMs));
-        chip(c, code, accent);
+        chip(c, state, accent, live);
         if (booting(bootMs)) scanlineSweep(c, accent, bootProgress(bootMs));
     }
 

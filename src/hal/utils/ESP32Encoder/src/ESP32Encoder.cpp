@@ -347,6 +347,11 @@ bool ESP32Encoder::wasMoved(bool updateDirection)
     return true;
 }
 
+void ESP32Encoder::resetMoved()
+{
+    _last_count = readCount();
+}
+
 int ESP32Encoder::getDirection()
 {
     return _direction;

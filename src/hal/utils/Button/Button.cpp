@@ -8,6 +8,7 @@
 // #include <Arduino.h>
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "../dev_remote/dev_remote.h"
 
 
 #define LOW     0
@@ -43,6 +44,8 @@
 
     bool Button::read()
     {
+        DEV_REMOTE::poll();
+
         // ignore pin changes until after this delay time
         if (_ignore_until > millis())
         {
@@ -50,7 +53,7 @@
         }
         
         // pin has changed 
-        else if (digitalRead(_pin) != _state)
+        else if ((DEV_REMOTE::buttonForcedDown() ? LOW : digitalRead(_pin)) != _state)
         {
             _ignore_until = millis() + _delay;
             _state = !_state;

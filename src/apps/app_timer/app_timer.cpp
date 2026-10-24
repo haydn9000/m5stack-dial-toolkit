@@ -80,25 +80,25 @@ void Timer::_render()
     {
         case TIMER_APP::SETTING:
             accent = CYBER::AMBER;
-            code = "SET";
-            hint = "TURN = SET   PRESS = START";
+            code = "Set time";
+            hint = "Turn to set   Press to start";
             break;
         case TIMER_APP::RUNNING:
             accent = CYBER::CYAN;
-            code = "RUN";
-            hint = "PRESS = PAUSE   HOLD = EXIT";
+            code = "Running";
+            hint = "Press to pause   Hold to exit";
             break;
         case TIMER_APP::PAUSED:
             accent = CYBER::MAGENTA;
-            code = "PSE";
-            hint = "PRESS = RESUME   TURN = RESET";
+            code = "Paused";
+            hint = "Press to resume   Turn to reset";
             break;
         case TIMER_APP::FINISHED:
         default:
             accent = ((millis() / 300) % 2) ? CYBER::RED
                                             : CYBER::blend(CYBER::RED, CYBER::BG, 0.3f);
-            code = "END";
-            hint = "PRESS = DISMISS   HOLD = EXIT";
+            code = "Time's up";
+            hint = "Press to stop alarm   Hold to exit";
             break;
     }
 
@@ -116,7 +116,7 @@ void Timer::_render()
     snprintf(big, sizeof(big), "%02u:%02u", (unsigned)m, (unsigned)s);
 
     LGFX_Sprite* cv = _data.hal->canvas;
-    CYBER::hudChrome(cv, "TIMER", code, accent, bootMs);
+    CYBER::hudChrome(cv, "Timer", code, accent, bootMs, _data.state == TIMER_APP::RUNNING);
     CYBER::progressRing(cv, ring * CYBER::bootProgress(bootMs), accent);
 
     char shown[12];

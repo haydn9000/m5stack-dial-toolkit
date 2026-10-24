@@ -28,6 +28,7 @@ void MoreMenu::_create_menu()
         image_data_icon_lcd,      // LCD Test
         image_data_icon_rtc,      // RTC Clock
         image_data_icon_rtc,      // Set Time
+        image_data_icon_wifi,     // Internet Time
         image_data_icon_rfid,     // RFID Scan
         image_data_icon_wifi,     // WiFi Scan
         image_data_icon_ble,      // BLE Server
@@ -60,6 +61,7 @@ void MoreMenu::_create_menu()
         "LCD Test",
         "RTC Clock",
         "Set Time",
+        "Internet Time",
         "RFID Scan",
         "WiFi Scan",
         "BLE Server",

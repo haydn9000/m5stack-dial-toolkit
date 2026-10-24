@@ -77,6 +77,9 @@ private:
 
 public:
     bool wasMoved(bool updateDirection = false);
+    /* Forget turns made since the last wasMoved() — call when a menu regains
+     * the dial, so turns used inside an app don't scroll the menu on return. */
+    void resetMoved();
     int getDirection();
     inline void clear() { clearCount(); }
     inline int readCount() { return static_cast<int>(getCount()) / 2; }

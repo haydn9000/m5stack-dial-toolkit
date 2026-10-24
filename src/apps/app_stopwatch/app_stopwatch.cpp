@@ -59,9 +59,9 @@ void Stopwatch::_render()
     uint32_t accent;
     const char* code;
     const char* hint;
-    if (_data.state == STOPWATCH::RUNNING) { accent = CYBER::CYAN;  code = "RUN"; hint = "PRESS = PAUSE"; }
-    else if (_data.state == STOPWATCH::PAUSED) { accent = CYBER::AMBER; code = "PSE"; hint = "TURN = RESET   HOLD = EXIT"; }
-    else { accent = CYBER::blend(CYBER::CYAN, CYBER::BG, 0.55f); code = "RDY"; hint = "PRESS = START   HOLD = EXIT"; }
+    if (_data.state == STOPWATCH::RUNNING) { accent = CYBER::CYAN;  code = "Running"; hint = "Press to pause"; }
+    else if (_data.state == STOPWATCH::PAUSED) { accent = CYBER::AMBER; code = "Paused"; hint = "Press to resume   Turn to reset"; }
+    else { accent = CYBER::blend(CYBER::CYAN, CYBER::BG, 0.55f); code = "Ready"; hint = "Press to start   Hold to exit"; }
 
     /* Ring sweeps once per minute like a second hand */
     float ring = (float)(e % 60000) / 60000.0f;
@@ -74,7 +74,7 @@ void Stopwatch::_render()
     snprintf(sub, sizeof(sub), ".%02u", (unsigned)cs);
 
     LGFX_Sprite* cv = _data.hal->canvas;
-    CYBER::hudChrome(cv, "STOPWATCH", code, accent, bootMs);
+    CYBER::hudChrome(cv, "Stopwatch", code, accent, bootMs, _data.state == STOPWATCH::RUNNING);
     CYBER::progressRing(cv, ring * CYBER::bootProgress(bootMs), accent);
 
     char shown[12];

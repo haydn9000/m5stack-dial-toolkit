@@ -1,10 +1,10 @@
 /**
  * @file gui_ble_volume.cpp
- * @brief Cyberpunk volume HUD: dark terminal backdrop with scanlines, neon
- *        segmented gauge ring, targeting-bracket HUD frame, glitchy 7-segment
- *        readout, and live link telemetry.
+ * @brief Cyberpunk volume HUD: neon segmented 270-degree gauge, the level
+ *        in 7-segment digits, and the link state as a plain-language line.
  */
 #include "gui_ble_volume.h"
+#include "../../utilities/cyber_ui/cyber_ui.hpp"
 #include <cmath>
 
 // delay() and millis() are provided by the Arduino framework
@@ -37,63 +37,6 @@ namespace
         int bl = ab + (int)((bb - ab) * t);
         return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)bl;
     }
-}
-
-
-void GUI_BLE_Volume::_draw_background()
-{
-    /* Deep terminal gradient */
-    for (int y = 0; y < 240; y += 2)
-    {
-        uint32_t col = lerp_color(COL_BG_TOP, COL_BG_BOT, y / 239.0f);
-        _canvas->fillRect(0, y, 240, 2, col);
-    }
-}
-
-
-void GUI_BLE_Volume::_draw_scanlines()
-{
-    /* CRT scanline overlay every 3px */
-    for (int y = 0; y < 240; y += 3)
-        _canvas->drawFastHLine(0, y, 240, COL_SCAN);
-}
-
-
-void GUI_BLE_Volume::_draw_hud_frame(bool muted)
-{
-    const uint32_t edge = muted ? COL_RED : COL_CYAN;
-    const uint32_t glow = lerp_color(edge, COL_BG_BOT, 0.55f);
-
-    /* Targeting brackets at NE / NW / SE / SW (45/135/225/315 deg) */
-    const int cx = 120, cy = 120, r = 113, len = 16;
-    const float angs[4] = {45.0f, 135.0f, 225.0f, 315.0f};
-    for (int k = 0; k < 4; k++)
-    {
-        float a = angs[k] * DEG2RAD;
-        int bx = cx + (int)(r * cosf(a));
-        int by = cy + (int)(r * sinf(a));
-        /* Tangential tick */
-        float tx = -sinf(a), ty = cosf(a);
-        _canvas->drawLine(bx - (int)(tx * len), by - (int)(ty * len),
-                          bx + (int)(tx * len), by + (int)(ty * len), edge);
-        /* Inward stub */
-        _canvas->drawLine(bx, by, cx + (int)((r - 10) * cosf(a)),
-                          cy + (int)((r - 10) * sinf(a)), glow);
-    }
-
-    /* Side telemetry ticks (left & right rails) */
-    for (int i = 0; i < 5; i++)
-    {
-        int yy = 96 + i * 12;
-        _canvas->drawFastHLine(16, yy, 6, glow);
-        _canvas->drawFastHLine(218, yy, 6, glow);
-    }
-
-    /* Lower data strip */
-    _canvas->setFont(GUI_FONT_CN_SMALL);
-    _canvas->setTextSize(1);
-    _canvas->setTextColor(muted ? COL_RED : COL_CYAN);
-    _canvas->drawCenterString("// AUDIO.LINK", 120, 168);
 }
 
 
@@ -157,83 +100,32 @@ void GUI_BLE_Volume::_draw_gauge(int volume, bool muted)
 
 void GUI_BLE_Volume::_draw_status(bool connected)
 {
-    _canvas->setFont(GUI_FONT_CN_SMALL);
-    _canvas->setTextSize(1);
-
+    CYBER::text(_canvas, "Volume", 120, 50, CYBER::FONT_LABEL(), lerp_color(COL_CYAN, CYBER::WHITE, 0.75f));
     if (connected)
-    {
-        _canvas->setTextColor(COL_GREEN);
-        _canvas->fillCircle(92, 56, 3, COL_GREEN);
-        _canvas->drawCenterString("LINK//OK", 124, 48);
-    }
+        CYBER::chip(_canvas, "Connected", COL_GREEN);
     else
-    {
-        _canvas->setTextColor(COL_AMBER);
-        _canvas->drawCenterString("SCANNING", 120, 48);
-    }
+        CYBER::chip(_canvas, "Waiting for computer", COL_AMBER, true);
 }
 
 
 void GUI_BLE_Volume::_draw_center_number(int volume, bool muted)
 {
-    if (muted)
-    {
-        /* 7-segment digital readout (still shows the level, e.g. 0) */
-        char buf[8];
-        snprintf(buf, sizeof(buf), "%d", volume);
-        _canvas->setFont(&fonts::Font7);
-        _canvas->setTextSize(1);
-        _canvas->setTextColor(lerp_color(COL_RED, COL_BG_BOT, 0.45f));
-        _canvas->drawCenterString(buf, 121, 70);
-        _canvas->setTextColor(COL_RED);
-        _canvas->drawCenterString(buf, 120, 70);
-
-        _canvas->setFont(GUI_FONT_CN_BIG);
-        _canvas->setTextSize(1);
-        /* Glitch shadow then bright */
-        _canvas->setTextColor(lerp_color(COL_RED, COL_BG_BOT, 0.4f));
-        _canvas->drawCenterString("[MUTE]", 122, 139);
-        _canvas->setTextColor(COL_RED);
-        _canvas->drawCenterString("[MUTE]", 120, 138);
-        return;
-    }
-
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", volume);
-
-    /* Occasional horizontal "glitch" offset for a cyberpunk flicker */
-    int gx = ((millis() / 90) % 37 == 0) ? 2 : 0;
-
-    /* 7-segment digital readout with chromatic-aberration glow */
-    _canvas->setFont(&fonts::Font7);
-    _canvas->setTextSize(1);
-
-    _canvas->setTextColor(lerp_color(COL_MAGENTA, COL_BG_BOT, 0.45f));
-    _canvas->drawCenterString(buf, 122 + gx, 74);
-    _canvas->setTextColor(lerp_color(COL_CYAN, COL_BG_BOT, 0.45f));
-    _canvas->drawCenterString(buf, 118 - gx, 74);
-    _canvas->setTextColor(COL_CYAN);
-    _canvas->drawCenterString(buf, 120, 74);
+    CYBER::text(_canvas, buf, 120, 116, &fonts::Font7, muted ? COL_RED : CYBER::WHITE);
+    if (muted)
+        CYBER::text(_canvas, "Muted", 120, 154, CYBER::FONT_LABEL(), COL_RED);
 }
 
 
 void GUI_BLE_Volume::renderPage(bool connected, int volume, bool muted)
 {
-    _draw_background();
-    _draw_hud_frame(muted);
+    _canvas->fillScreen(CYBER::BG);
     _draw_gauge(volume, muted);
     _draw_status(connected);
     _draw_center_number(volume, muted);
-    _draw_scanlines();
-
-    /* Quit hint */
-    _canvas->setFont(GUI_FONT_CN_BIG);
-    _draw_quit_button(COL_CYAN);
-
-    /* Neon outer rim */
-    _canvas->drawCircle(120, 120, 119, muted ? COL_RED : COL_CYAN);
-    _canvas->drawCircle(120, 120, 118, lerp_color(muted ? COL_RED : COL_CYAN, COL_BG_BOT, 0.45f));
-
+    CYBER::hint(_canvas, muted ? "Press to unmute   Hold to exit"
+                               : "Press to mute   Hold to exit");
     _canvas->pushSprite(0, 0);
 }
 

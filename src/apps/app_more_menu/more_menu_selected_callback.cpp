@@ -57,6 +57,9 @@ void MoreMenu::_run_app(MOONCAKE::APP_BASE* app, uint32_t themeColor, const uint
     }
 
     delete app;
+
+    /* Turns used inside the app shouldn't scroll the menu */
+    _data.hal->encoder.resetMoved();
 }
 
 
@@ -90,6 +93,11 @@ void MoreMenu::_item_selected_callback(uint8_t selectedNum)
     if (selected_item_tag == "Set Time")
     {
         _run_app(new MOONCAKE::USER_APP::SetTime, 0x33B5C4, image_data_icon_rtc);
+        return;
+    }
+    if (selected_item_tag == "Internet Time")
+    {
+        _run_app(new MOONCAKE::USER_APP::TimeSyncApp, 0x00FF9F, image_data_icon_wifi);
         return;
     }
     if (selected_item_tag == "RFID Scan")

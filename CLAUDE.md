@@ -23,7 +23,7 @@ pio device monitor
 
 | Component | Details |
 |---|---|
-| MCU | ESP32-S3 |
+| MCU | ESP32-S3 (StampS3), 8MB flash, **no PSRAM** — the boot log's "PSRAM ID read error" is expected. ~320KB internal RAM: the 240×240 canvas takes 115KB and NimBLE (PC_LINK, up from boot) a big share, leaving ~116KB at the launcher; WiFi (TIME_SYNC) needs ~50KB of that, so avoid caching large sprites (check with `tools/dial_remote.py COM9 mem`) |
 | Display | GC9A01 240×240 round SPI LCD (pins: MOSI=5, SCLK=6, DC=4, CS=7, RST=8, BL=9) |
 | Touchpad | FT3267 I2C (SDA=11, SCL=12, INT=14) |
 | Encoder A/B | GPIO 41, 40 |
@@ -55,8 +55,9 @@ src/
 │   ├── tp/hal_tp.hpp               # FT3267 touchpad driver
 │   ├── rtc/hal_rtc.hpp             # PCF8563 RTC driver
 │   └── utils/
-│       ├── ESP32Encoder/           # Encoder with wasMoved()/getDirection() API
-│       └── Button/                 # Debounced button with callback support
+│       ├── ESP32Encoder/           # Encoder with wasMoved()/getDirection() API; resetMoved() drops turns made inside an app (launcher/More menu call it when an app closes)
+│       ├── Button/                 # Debounced button with callback support
+│       └── dev_remote/             # -DDEV_REMOTE_ENABLE: USB-serial screenshots + virtual turns/presses for UI work (host: tools/dial_remote.py)
 └── apps/                           # MOONCAKE app framework
     ├── app.h                       # APP_BASE lifecycle base class
     ├── common_define.h             # Shared macros (_log, _canvas_update, etc.)
@@ -64,7 +65,8 @@ src/
     ├── app_lcd_test/               # LCD test app
     ├── app_rtc_test/               # RTC clock display app
     ├── app_watchface/              # Cyberpunk "SCOPE" watch face — main launcher home (index 0). Radar second-sweep + phosphor trail; turn=toggle date layer, press=back to time, hold=exit. Prototype: design/watchface-scope.html. RTC is only reseeded from the build timestamp when its current time is implausible (hal.cpp::_rtc_seed_if_needed) — fresh device or time lost after a full power loss with no backup battery. Reflashing never overwrites an already-plausible time, including reflashing a newer build.
-    ├── app_set_time/               # On-device RTC setter (turn=adjust field, press=next field, hold=save+exit); cyber-styled with Font7 value + field progress ring
+    ├── app_set_time/               # On-device RTC setter (turn=adjust field, press=next field, hold=save+exit); cyber-styled with Font7 value + field progress ring. Saving calls TIME_SYNC::forgetSyncPoint() so a hand-set clock doesn't skew the drift rate
+    ├── app_time_sync/              # "Internet Time" (More menu): sync status, measured drift / power-loss flag, Sync now, and Wi-Fi setup via a QR code + phone captive portal
     ├── app_rfid_test/              # RFID card scanner app
     ├── app_set_brightness/         # Brightness control app
     ├── app_wifi_scan/              # WiFi network scanner app
@@ -74,14 +76,15 @@ src/
     ├── app_timer/                  # Cyberpunk countdown timer with loud resonant end alarm
     ├── app_pomodoro/               # Cyberpunk pomodoro (focus/break cycles, 4 session dots)
     ├── app_temp_demo/              # Temperature/animation demo app
-    ├── app_more_menu/              # Scrollable "more" menu (deep sleep, power off, etc.)
+    ├── app_more_menu/              # Scrollable "more" menu (deep sleep, power off, etc.) — centred list, selected row in a fixed highlight pill
     ├── app_template/               # Blank template for new apps
     └── utilities/
         ├── smooth_menu/            # Animated menu library (Simple_Menu)
-        ├── cyber_ui/               # Shared neon-cyberpunk HUD helpers for the time apps. Palette (CYAN/AMBER=yellow/MAGENTA/RED/GREEN on near-black BG) + hudChrome() (asymmetric hudFrame + chamfered header tab + status chip), progressRing (60 pips + rim, no track band), bigTime (Font7 + glitchy chromatic-aberration shadow; last arg is a per-app glitch amount: 0=steady, 1=default, >1=livelier), and a boot-in "decrypt" (scrambleTime + scanlineSweep + bootProgress, BOOT_MS). Prototype: design/timeapp-hud.html
+        ├── cyber_ui/               # Shared neon-cyberpunk HUD helpers used by every main-screen app. Palette (CYAN/AMBER=yellow/MAGENTA/RED/GREEN on near-black BG); type scale FONT_SMALL/LABEL/VALUE = DejaVu12/18/24 + text() helper (readability rule: no Font0 for content, sentence-case labels); hudChrome(name, state, accent, bootMs, live) = plain ground + header with yellow underline + "● State" line (dot pulses while live); progressRing (60 pips + rim); bigTime (solid Font7); hint() (two stacked lines split on a run of spaces, e.g. "Press to pause   Hold to exit"); boot-in "decrypt" (scrambleTime + scanlineSweep + bootProgress, BOOT_MS). No scanlines / chromatic shadows — they cost legibility. Prototype: design/timeapp-hud.html (older, busier look)
+        ├── time_sync/              # TIME_SYNC: background WiFi+SNTP task that keeps the RTC on internet time (boot, every 6h, retry 15min, requestSync()); records drift / drift rate / RTC VL power-loss flag in NVS; captive-portal setup AP "M5Dial-Setup"; RadioLock shares the radio with WiFi Scan
         ├── gui_base/               # GUI_Base class with common drawing helpers
         ├── ble_demo/               # BLE demo interface + Arduino BLE implementation
-        └── wifi_common_test/       # WiFi scan utility (esp_wifi API)
+        └── wifi_common_test/       # WiFi scan utility (Arduino WiFi; must not touch esp_wifi/event loop/NVS directly — TIME_SYNC owns them)
 ```
 
 ## App Framework (MOONCAKE)
@@ -104,7 +107,10 @@ Close an app from within `onRunning()` by calling `destroyApp()`.
 - **Per-notch beep**: HAL installs a global `encoder._move_callback` that beeps on every detent. Apps that manage their own sounds (e.g. volume) suppress it by saving & nulling `_move_callback`/`_user_data` in `onCreate()` and restoring them in `onDestroy()`.
 - **Button**: `hal->encoder.btn.read()` returns `false` (LOW) when pressed. Typical pattern: `if (!hal->encoder.btn.read()) { while (!hal->encoder.btn.read()) delay(5); destroyApp(); }`
 - **Buzzer**: `hal->buzz.tone(frequency_hz, duration_ms)` is the raw wrapper. Prefer the cyberpunk SFX helpers in `hal_buzzer.hpp` — `fxTick` (encoder/field click, same both directions), `fxPress` (short button pip, used by the global press callback so it must stay short), `fxConfirm`/`fxCancel` (start-resume / pause-back), `fxReset`, `fxScan`, `fxAlarm` (loop for a siren), `fxComplete`, all built on `sweep(f0,f1,ms)`. These block for their sequence (small `delay()`s), so call them on discrete events, not every frame. HAL wires `fxTick` to the global encoder-move callback and `fxPress` to the button-press callback.
-- **Persistence (NVS)**: Use the Arduino `Preferences` library, namespace `"settings"`. Brightness is stored under key `"bright"` (restored during the boot splash in `hal.cpp`). Persist in `onDestroy()`.
+- **Persistence (NVS)**: Use the Arduino `Preferences` library, namespace `"settings"`. Brightness is stored under key `"bright"` (restored during the boot splash in `hal.cpp`). Persist in `onDestroy()`. TIME_SYNC uses `wifi_ssid` / `wifi_pass` / `tz` (POSIX TZ; the RTC holds **local** time) plus `drift` / `drift_rate` / `sync_at` / `rtc_stopped`.
+- **Shared BLE stack**: PC_LINK brings NimBLE up at boot as `M5DIAL-001`, so the BLE Volume app's `BleKeyboard::begin()` inherits that name, server and advert (its own `init("M5Dial Volume")` is a no-op) and replaces the server callbacks. Each side therefore re-dresses the shared advert when it becomes active — `_advertise_as_keyboard()` in `app_ble_volume.cpp` (name `M5Dial Volume`, HID 0x1812, keyboard appearance) and `_advertise_as_pc_link()` via `PC_LINK::setActive(true)` — and both decide on re-advertising by polling (`getConnectedCount()` / `isAdvertising()`), not callbacks. `BleKeyboard::isConnected()` is true for *any* central (e.g. `claude_sender.py --ble`), so the volume app uses `_host_connected()` (an encrypted link = a paired HID host). The senders auto-connect to anything advertising as `M5DIAL-001` and that stops advertising — which is why the keyboard must not advertise under that name.
+- **Internet time**: `TIME_SYNC::begin(&hal)` in `main.cpp::setup()` starts the sync task (core 0). It writes the RTC from its own task, so `PCF8563::getTime/setTime` take a mutex (they share `_data_buffer`) — keep that lock if you touch the driver. `PCF8563::lowVoltage()` exposes the VL bit (oscillator stopped → time froze), which is the likely cause of a clock that "falls behind" rather than crystal drift.
+- **UI screenshots / remote control (dev)**: with `-DDEV_REMOTE_ENABLE` (on in `platformio.ini`), `python tools/dial_remote.py COM9 "turn 1" "press 100" "shot out.png"` drives the dial over USB serial (`press 1000` = long press). The launcher only takes one step per poll, so send `turn 1` + `wait 1.2` per icon. `~` lines are reserved for this hook (PC_LINK skips them).
 - **Power / Sleep**: Two More Menu items, both in `hal.cpp`/`hal.h`. **Deep Sleep** → `HAL::deepSleep()`: always ESP32 deep sleep — backlight off, `esp_sleep_enable_ext0_wakeup()` + `esp_deep_sleep_start()` — regardless of power source, waking on a touchscreen tap (GPIO14/`TP_INT` — see the power circuit notes above for why the WAKE button can't be used here). It latches GPIO46/`HOLD` high through the sleep via `gpio_hold_en()` + `gpio_deep_sleep_hold_en()` (see power circuit notes — without this the board loses power outright on battery the instant sleep starts), released again by `gpio_hold_dis()` in `powerOn()` on the next boot. **Power Off** → `HAL::powerOffOrSleep()`: tries a real `HOLD=0` cutoff (`powerOff()`) first; if execution continues past that (proof external power is present, since `HOLD=0` is a no-op on USB/DC), it falls back to the same `deepSleep()`. **On battery alone, Power Off is a one-way trip recoverable only by reconnecting external power** — no confirmed hardware path lets the WAKE button or a tap revive a board that's genuinely had `HOLD` dropped — so prefer Deep Sleep unless you specifically want that near-zero-draw, USB-recoverable-only state. Deep-sleep wake is a full reboot, not a resume. See `docs/superpowers/specs/2026-07-13-deep-sleep-on-battery-design.md` (supersedes `docs/superpowers/specs/2026-07-11-power-off-deep-sleep-design.md`) for the full design/hardware reasoning.
 - **RTC I2C robustness**: `hal_rtc.hpp` uses a bounded I2C timeout (`pdMS_TO_TICKS(100)`, logged via `ESP_LOGW` on failure) rather than `portMAX_DELAY` for every transaction. The legacy ESP-IDF I2C driver can wedge after sustained high-frequency polling (the watchface reads the RTC at ~30fps), and with `portMAX_DELAY` that would hang the single-threaded main loop forever — don't reintroduce `portMAX_DELAY` here.
 - **Logging**: Use `_log(fmt, ...)`, `_log_w(...)`, `_log_e(...)` macros (wrap `ESP_LOGI/W/E`). Tag is `_tag` (a `const char*` member set per class).
@@ -156,11 +162,13 @@ The original project used ESP-IDF 5.1.3. Key differences in this port:
 
 ## Launcher Layout
 
-The **main launcher** shows 7 icons clustered in a tight arc at the top (not spread around the full ring): **WATCH** (Watch Face, index 0 — the home/default-highlighted app on boot), **VOL** (BLE Volume, index 1), **TIMER** (index 2), **STOPWATCH** (index 3), **POMODORO** (index 4), **BRIGHTNESS** (Set Brightness, index 5), and **MORE** (index 6). `ICON_NUM` in `launcher_render_callback.hpp` controls the icon/menu count. The arc spacing/center are set by `arc_step` (36° between icons) / `arc_center` in `launcher.cpp` (`_menu_init` and `_icon_list_init`). The switch in `launcher.cpp::_app_open_callback()` must match the icon order, and the MORE special-case (`selectedNum != 6`) must track MORE's index.
+The **main launcher** shows 9 icons around the ring: **Watch** (Watch Face, index 0 — the home/default-highlighted app on boot), **Volume** (BLE Volume, 1), **Timer** (2), **Stopwatch** (3), **Pomodoro** (4), **Brightness** (5), **Claude** (Claude Usage, 6), **PC stats** (7) and **More** (8). `ICON_NUM` in `launcher_render_callback.hpp` controls the icon/menu count. The arc spacing/center are set by `arc_step` (36° between icons) / `arc_center` in `launcher.cpp` (`_menu_init` and `_icon_list_init`). The switch in `launcher.cpp::_app_open_callback()` must match the icon order, and the MORE special-case (`selectedNum != 8`) must track MORE's index.
+
+Launcher icons are **Tabler line icons** (MIT, `tools/icon_src/tabler/` + LICENSE) rasterised to 42×42 alpha masks by `tools/gen_tabler_icons.py` → `launcher_icons/launcher_glyphs.h` (generated — edit the script's `ICONS` list, rerun it). `_icon_list_init()` tints each mask twice: `icon_sprite_list` (accent glyph on a dark disc — the idle look, also passed to apps as their icon) and `icon_selected_list` (dark glyph on the filled accent disc). Colours are `icon_color_list`; the centre shows `icon_tag_list` pairs (name in DejaVu24 tinted with the icon colour, a short description in DejaVu12). There is no selector dot. The old RGB565 `image_data_icon_*` arrays remain only for the More menu rows.
 
 All other apps live in the **More menu** (`app_more_menu/`), shown as a vertical list with each app's icon drawn to the left of its name. To move/add an app there:
 - Add the app's `#include` to `app_more_menu.h`.
-- Add its tag to `tag_list` in `app_more_menu.cpp::_create_menu()` (text x-offset is 56 to leave room for icons).
+- Add its tag to `tag_list` in `app_more_menu.cpp::_create_menu()` (the render callback centres each row; keep tags short enough to fit the 180px highlight pill in DejaVu18).
 - Add the matching icon (or `nullptr`) at the same index in the `setIcons({...})` list in `_create_menu()`.
 - Add a matching `if (selected_item_tag == "...") { _run_app(new ...App, themeColor, image_data_icon_...); return; }` in `more_menu_selected_callback.cpp`.
 

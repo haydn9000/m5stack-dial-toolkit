@@ -15,6 +15,7 @@
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
+#include "utils/dev_remote/dev_remote.h"
 #include <string.h>
 #include <cmath>
 #include <cstdio>
@@ -62,6 +63,7 @@ namespace HAL
         /* Create canvas */
         canvas = new LGFX_Sprite(&display);
         canvas->createSprite(display.width(), display.height());
+        DEV_REMOTE::attach(canvas, &encoder);
         // printf("free block: %d\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
         /* Simple start up anim */

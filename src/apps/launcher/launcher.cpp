@@ -67,10 +67,6 @@ void Launcher::_icon_list_init()
         /* Set tags */
         icon_list[i].tag_up = icon_tag_list[i * 2];
         icon_list[i].tag_down = icon_tag_list[i * 2 + 1];
-
-        /* Push Icon pic into sprite */
-        icon_sprite_list[i].createSprite(42, 42);
-        icon_sprite_list[i].pushImage(0, 0, 42, 42, icon_pic_list[i]);
     }
 
     /* Icon position — clustered in a tight arc at the top */
@@ -312,18 +308,26 @@ void Launcher::_app_open_callback(uint8_t selectedNum)
     /* If app created */
     if (app_ptr != nullptr)
     {
-        /* Init if gui module exsit */
+        /* Init if gui module exsit — with a tinted icon built just for the
+         * app's lifetime (no cached sprites; see launcher_render_callback) */
+        LGFX_Sprite app_icon(_data.hal->canvas);
         if (app_ptr->getGui() != nullptr)
         {
-            app_ptr->getGui()->setThemeColor(icon_list[selectedNum].color);
-            app_ptr->getGui()->init(_data.hal->canvas, &icon_sprite_list[selectedNum]);
+            uint32_t col = icon_list[selectedNum].color;
+            icon_tint(app_icon, icon_glyph_list[selectedNum], col, icon_idle_disc(col));
+            app_ptr->getGui()->setThemeColor(col);
+            app_ptr->getGui()->init(_data.hal->canvas, &app_icon);
         }
 
         /* Run app */
         _simple_app_manager(app_ptr);
-        
+
         /* Free app */
         delete app_ptr;
+        app_icon.deleteSprite();
+
+        /* Turns used inside the app shouldn't move the selection */
+        _data.hal->encoder.resetMoved();
     }
 
 
